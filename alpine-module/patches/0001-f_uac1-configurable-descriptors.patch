@@ -1,0 +1,417 @@
+diff --color -ru --color=never a/drivers/usb/gadget/function/f_uac1.c b/drivers/usb/gadget/function/f_uac1.c
+--- a/drivers/usb/gadget/function/f_uac1.c	2026-10-11 18:17:51
++++ b/drivers/usb/gadget/function/f_uac1.c	2026-10-11 18:24:32
+@@ -16,6 +16,7 @@
+ 
+ #include <linux/usb/audio.h>
+ #include <linux/module.h>
++#include <linux/ctype.h>
+ 
+ #include "u_audio.h"
+ #include "u_uac1.h"
+@@ -214,7 +215,7 @@
+ 	.bmAttributes =		USB_ENDPOINT_SYNC_ADAPTIVE
+ 				| USB_ENDPOINT_XFER_ISOC,
+ 	.wMaxPacketSize	=	cpu_to_le16(UAC1_OUT_EP_MAX_PACKET_SIZE),
+-	.bInterval =		4,
++	.bInterval =		1,
+ };
+ 
+ /* Class-specific AS ISO OUT Endpoint Descriptor */
+@@ -227,6 +228,31 @@
+ 	.wLockDelay =		cpu_to_le16(1),
+ };
+ 
++/*
++ * as_out_ep_desc/as_in_ep_desc above are the full-speed descriptors, where
++ * bInterval counts 1 ms frames. These are the high-speed versions, where it
++ * counts 125 us microframes as a power of two.
++ */
++static struct usb_endpoint_descriptor hs_as_out_ep_desc = {
++	.bLength =		USB_DT_ENDPOINT_AUDIO_SIZE,
++	.bDescriptorType =	USB_DT_ENDPOINT,
++	.bEndpointAddress =	USB_DIR_OUT,
++	.bmAttributes =		USB_ENDPOINT_SYNC_ADAPTIVE
++				| USB_ENDPOINT_XFER_ISOC,
++	.wMaxPacketSize	=	cpu_to_le16(UAC1_OUT_EP_MAX_PACKET_SIZE),
++	.bInterval =		UAC1_DEF_HS_BINT,
++};
++
++static struct usb_endpoint_descriptor hs_as_in_ep_desc = {
++	.bLength =		USB_DT_ENDPOINT_AUDIO_SIZE,
++	.bDescriptorType =	USB_DT_ENDPOINT,
++	.bEndpointAddress =	USB_DIR_IN,
++	.bmAttributes =		USB_ENDPOINT_SYNC_ASYNC
++				| USB_ENDPOINT_XFER_ISOC,
++	.wMaxPacketSize	=	cpu_to_le16(UAC1_OUT_EP_MAX_PACKET_SIZE),
++	.bInterval =		UAC1_DEF_HS_BINT,
++};
++
+ static struct uac_format_type_i_discrete_descriptor as_in_type_i_desc = {
+ 	.bLength =		0, /* filled on rate setup */
+ 	.bDescriptorType =	USB_DT_CS_INTERFACE,
+@@ -245,7 +271,7 @@
+ 	.bmAttributes =		USB_ENDPOINT_SYNC_ASYNC
+ 				| USB_ENDPOINT_XFER_ISOC,
+ 	.wMaxPacketSize	=	cpu_to_le16(UAC1_OUT_EP_MAX_PACKET_SIZE),
+-	.bInterval =		4,
++	.bInterval =		1,
+ };
+ 
+ /* Class-specific AS ISO OUT Endpoint Descriptor */
+@@ -292,6 +318,9 @@
+ 	NULL,
+ };
+ 
++/* f_audio_desc with the high-speed endpoint descriptors, filled in setup_descriptor() */
++static struct usb_descriptor_header *f_audio_hs_desc[ARRAY_SIZE(f_audio_desc)];
++
+ /* Standard ISO OUT Endpoint Descriptor */
+ static struct usb_endpoint_descriptor ss_as_out_ep_desc  = {
+ 	.bLength =		USB_DT_ENDPOINT_AUDIO_SIZE,
+@@ -437,7 +466,7 @@
+ 	struct uac1_status_word *msg;
+ 	int ret;
+ 
+-	if (!uac1->int_ep->enabled)
++	if (!uac1->int_ep || !uac1->int_ep->enabled)
+ 		return 0;
+ 
+ 	if (atomic_inc_return(&uac1->int_count) > UAC1_DEF_INT_REQ_NUM) {
+@@ -1154,7 +1183,7 @@
+ 			f_audio_desc[i++] = USBDHDR(in_feature_unit_desc);
+ 	}
+ 
+-	if (FUOUT_EN(opts) || FUIN_EN(opts))
++	if ((FUOUT_EN(opts) || FUIN_EN(opts)) && opts->int_ep_present)
+ 		f_audio_desc[i++] = USBDHDR(&ac_int_ep_desc);
+ 
+ 	if (EPOUT_EN(opts)) {
+@@ -1174,6 +1203,16 @@
+ 		f_audio_desc[i++] = USBDHDR(&as_iso_in_desc);
+ 	}
+ 	f_audio_desc[i] = NULL;
++
++	for (i = 0; f_audio_desc[i]; i++) {
++		if (f_audio_desc[i] == USBDHDR(&as_out_ep_desc))
++			f_audio_hs_desc[i] = USBDHDR(&hs_as_out_ep_desc);
++		else if (f_audio_desc[i] == USBDHDR(&as_in_ep_desc))
++			f_audio_hs_desc[i] = USBDHDR(&hs_as_in_ep_desc);
++		else
++			f_audio_hs_desc[i] = f_audio_desc[i];
++	}
++	f_audio_hs_desc[i] = NULL;
+ }
+ 
+ static int f_audio_validate_opts(struct g_audio *audio, struct device *dev)
+@@ -1225,9 +1264,55 @@
+ 		return -EINVAL;
+ 	}
+ 
++	if (opts->p_hs_bint < 1 || opts->p_hs_bint > 4 ||
++	    opts->c_hs_bint < 1 || opts->c_hs_bint > 4) {
++		dev_err(dev, "Error: hs_bint must be 1..4\n");
++		return -EINVAL;
++	} else if (opts->p_max_packet_size > 1023 || opts->c_max_packet_size > 1023) {
++		dev_err(dev, "Error: max_packet_size must be at most 1023\n");
++		return -EINVAL;
++	} else if (opts->p_ep_num > 15 || opts->c_ep_num > 15) {
++		dev_err(dev, "Error: ep_num must be 0..15\n");
++		return -EINVAL;
++	} else if (opts->p_terminal_type > 0xffff || opts->c_terminal_type > 0xffff) {
++		dev_err(dev, "Error: terminal_type must fit in 16 bits\n");
++		return -EINVAL;
++	}
++
+ 	return 0;
+ }
+ 
++/*
++ * Like usb_ep_autoconfig(), but if num is nonzero claim that endpoint number,
++ * so the endpoint layout can match a captured device.
++ */
++static struct usb_ep *uac1_ep_claim(struct usb_gadget *gadget,
++				    struct usb_endpoint_descriptor *desc, u32 num)
++{
++	struct usb_ep *ep;
++
++	if (!num)
++		return usb_ep_autoconfig(gadget, desc);
++
++	list_for_each_entry(ep, &gadget->ep_list, ep_list) {
++		if (!isdigit(ep->name[2]) ||
++		    simple_strtoul(&ep->name[2], NULL, 10) != num)
++			continue;
++		if (!usb_gadget_ep_match_desc(gadget, ep, desc, NULL))
++			continue;
++		desc->bEndpointAddress = (desc->bEndpointAddress & USB_DIR_IN) | num;
++		ep->address = desc->bEndpointAddress;
++		ep->desc = NULL;
++		ep->comp_desc = NULL;
++		ep->claimed = true;
++		return ep;
++	}
++	return NULL;
++}
++
++/* string ID for a descriptor, or 0 (no string) if the name was set empty */
++#define UAC1_STR_ID(us, idx)	(strings_uac1[idx].s[0] ? (us)[idx].id : 0)
++
+ /* audio function driver setup/binding */
+ static int f_audio_bind(struct usb_configuration *c, struct usb_function *f)
+ {
+@@ -1255,15 +1340,15 @@
+ 	strings_uac1[STR_USB_OUT_IT_CH_NAMES].s = audio_opts->c_it_ch_name;
+ 	strings_uac1[STR_IO_OUT_OT].s = audio_opts->c_ot_name;
+ 	strings_uac1[STR_FU_OUT].s = audio_opts->c_fu_vol_name;
+-	strings_uac1[STR_AS_OUT_IF_ALT0].s = "Playback Inactive";
+-	strings_uac1[STR_AS_OUT_IF_ALT1].s = "Playback Active";
++	strings_uac1[STR_AS_OUT_IF_ALT0].s = audio_opts->c_alt0_name;
++	strings_uac1[STR_AS_OUT_IF_ALT1].s = audio_opts->c_alt1_name;
+ 
+ 	strings_uac1[STR_IO_IN_IT].s = audio_opts->p_it_name;
+ 	strings_uac1[STR_IO_IN_IT_CH_NAMES].s = audio_opts->p_it_ch_name;
+ 	strings_uac1[STR_USB_IN_OT].s = audio_opts->p_ot_name;
+ 	strings_uac1[STR_FU_IN].s = audio_opts->p_fu_vol_name;
+-	strings_uac1[STR_AS_IN_IF_ALT0].s = "Capture Inactive";
+-	strings_uac1[STR_AS_IN_IF_ALT1].s = "Capture Active";
++	strings_uac1[STR_AS_IN_IF_ALT0].s = audio_opts->p_alt0_name;
++	strings_uac1[STR_AS_IN_IF_ALT1].s = audio_opts->p_alt1_name;
+ 
+ 	us = usb_gstrings_attach(cdev, uac1_strings, ARRAY_SIZE(strings_uac1));
+ 	if (IS_ERR(us))
+@@ -1288,31 +1373,34 @@
+ 		}
+ 	}
+ 
+-	ac_interface_desc.iInterface = us[STR_AC_IF].id;
+-	usb_out_it_desc.iTerminal = us[STR_USB_OUT_IT].id;
+-	usb_out_it_desc.iChannelNames = us[STR_USB_OUT_IT_CH_NAMES].id;
+-	io_out_ot_desc.iTerminal = us[STR_IO_OUT_OT].id;
+-	as_out_interface_alt_0_desc.iInterface = us[STR_AS_OUT_IF_ALT0].id;
+-	as_out_interface_alt_1_desc.iInterface = us[STR_AS_OUT_IF_ALT1].id;
+-	io_in_it_desc.iTerminal = us[STR_IO_IN_IT].id;
+-	io_in_it_desc.iChannelNames = us[STR_IO_IN_IT_CH_NAMES].id;
+-	usb_in_ot_desc.iTerminal = us[STR_USB_IN_OT].id;
+-	as_in_interface_alt_0_desc.iInterface = us[STR_AS_IN_IF_ALT0].id;
+-	as_in_interface_alt_1_desc.iInterface = us[STR_AS_IN_IF_ALT1].id;
++	ac_interface_desc.iInterface = UAC1_STR_ID(us, STR_AC_IF);
++	usb_out_it_desc.iTerminal = UAC1_STR_ID(us, STR_USB_OUT_IT);
++	usb_out_it_desc.iChannelNames = UAC1_STR_ID(us, STR_USB_OUT_IT_CH_NAMES);
++	io_out_ot_desc.iTerminal = UAC1_STR_ID(us, STR_IO_OUT_OT);
++	as_out_interface_alt_0_desc.iInterface = UAC1_STR_ID(us, STR_AS_OUT_IF_ALT0);
++	as_out_interface_alt_1_desc.iInterface = UAC1_STR_ID(us, STR_AS_OUT_IF_ALT1);
++	io_in_it_desc.iTerminal = UAC1_STR_ID(us, STR_IO_IN_IT);
++	io_in_it_desc.iChannelNames = UAC1_STR_ID(us, STR_IO_IN_IT_CH_NAMES);
++	usb_in_ot_desc.iTerminal = UAC1_STR_ID(us, STR_USB_IN_OT);
++	as_in_interface_alt_0_desc.iInterface = UAC1_STR_ID(us, STR_AS_IN_IF_ALT0);
++	as_in_interface_alt_1_desc.iInterface = UAC1_STR_ID(us, STR_AS_IN_IF_ALT1);
+ 
++	io_out_ot_desc.wTerminalType = cpu_to_le16(audio_opts->c_terminal_type);
++	io_in_it_desc.wTerminalType = cpu_to_le16(audio_opts->p_terminal_type);
++
+ 	if (FUOUT_EN(audio_opts)) {
+ 		u8 *i_feature;
+ 
+ 		i_feature = (u8 *)out_feature_unit_desc +
+ 					out_feature_unit_desc->bLength - 1;
+-		*i_feature = us[STR_FU_OUT].id;
++		*i_feature = UAC1_STR_ID(us, STR_FU_OUT);
+ 	}
+ 	if (FUIN_EN(audio_opts)) {
+ 		u8 *i_feature;
+ 
+ 		i_feature = (u8 *)in_feature_unit_desc +
+ 					in_feature_unit_desc->bLength - 1;
+-		*i_feature = us[STR_FU_IN].id;
++		*i_feature = UAC1_STR_ID(us, STR_FU_IN);
+ 	}
+ 
+ 	/* Set channel numbers */
+@@ -1408,7 +1496,9 @@
+ 	ac_interface_desc.bNumEndpoints = 0;
+ 
+ 	/* allocate AC interrupt endpoint */
+-	if (FUOUT_EN(audio_opts) || FUIN_EN(audio_opts)) {
++	uac1->int_ep = NULL;
++	if ((FUOUT_EN(audio_opts) || FUIN_EN(audio_opts)) &&
++	    audio_opts->int_ep_present) {
+ 		ep = usb_ep_autoconfig(cdev->gadget, &ac_int_ep_desc);
+ 		if (!ep)
+ 			goto err_free_fu;
+@@ -1418,20 +1508,42 @@
+ 		ac_interface_desc.bNumEndpoints = 1;
+ 	}
+ 
++	/*
++	 * Packet size applies to every speed's copy. The descriptors are static,
++	 * so reset to the default too, or a previous bind's value would stick.
++	 */
++	{
++		__le16 c_mps = cpu_to_le16(audio_opts->c_max_packet_size ?:
++					   UAC1_OUT_EP_MAX_PACKET_SIZE);
++		__le16 p_mps = cpu_to_le16(audio_opts->p_max_packet_size ?:
++					   UAC1_OUT_EP_MAX_PACKET_SIZE);
++
++		as_out_ep_desc.wMaxPacketSize = c_mps;
++		hs_as_out_ep_desc.wMaxPacketSize = c_mps;
++		ss_as_out_ep_desc.wMaxPacketSize = c_mps;
++		as_in_ep_desc.wMaxPacketSize = p_mps;
++		hs_as_in_ep_desc.wMaxPacketSize = p_mps;
++		ss_as_in_ep_desc.wMaxPacketSize = p_mps;
++	}
++	hs_as_out_ep_desc.bInterval = audio_opts->c_hs_bint;
++	hs_as_in_ep_desc.bInterval = audio_opts->p_hs_bint;
++
+ 	/* allocate instance-specific endpoints */
+ 	if (EPOUT_EN(audio_opts)) {
+-		ep = usb_ep_autoconfig(cdev->gadget, &as_out_ep_desc);
++		ep = uac1_ep_claim(cdev->gadget, &as_out_ep_desc, audio_opts->c_ep_num);
+ 		if (!ep)
+ 			goto err_free_fu;
++		hs_as_out_ep_desc.bEndpointAddress = as_out_ep_desc.bEndpointAddress;
+ 		ss_as_out_ep_desc.bEndpointAddress = as_out_ep_desc.bEndpointAddress;
+ 		audio->out_ep = ep;
+ 		audio->out_ep->desc = &as_out_ep_desc;
+ 	}
+ 
+ 	if (EPIN_EN(audio_opts)) {
+-		ep = usb_ep_autoconfig(cdev->gadget, &as_in_ep_desc);
++		ep = uac1_ep_claim(cdev->gadget, &as_in_ep_desc, audio_opts->p_ep_num);
+ 		if (!ep)
+ 			goto err_free_fu;
++		hs_as_in_ep_desc.bEndpointAddress = as_in_ep_desc.bEndpointAddress;
+ 		ss_as_in_ep_desc.bEndpointAddress = as_in_ep_desc.bEndpointAddress;
+ 		audio->in_ep = ep;
+ 		audio->in_ep->desc = &as_in_ep_desc;
+@@ -1440,7 +1552,7 @@
+ 	setup_descriptor(audio_opts);
+ 
+ 	/* copy descriptors, and track endpoint copies */
+-	status = usb_assign_descriptors(f, f_audio_desc, f_audio_desc, f_audio_ss_desc,
++	status = usb_assign_descriptors(f, f_audio_desc, f_audio_hs_desc, f_audio_ss_desc,
+ 					f_audio_ss_desc);
+ 	if (status)
+ 		goto err_free_fu;
+@@ -1652,8 +1764,16 @@
+ 		goto end;						\
+ 	}								\
+ 									\
+-	ret = scnprintf(opts->name, min(sizeof(opts->name), len),	\
++	/*								\
++	 * Take the whole write minus a trailing newline, and report it	\
++	 * all consumed: returning fewer bytes (0 for an empty value)	\
++	 * makes writers retry the remainder forever.			\
++	 */								\
++	ret = scnprintf(opts->name, min(sizeof(opts->name), len + 1),	\
+ 			"%s", page);					\
++	if (ret && opts->name[ret - 1] == '\n')			\
++		opts->name[ret - 1] = '\0';				\
++	ret = len;							\
+ 									\
+ end:									\
+ 	mutex_unlock(&opts->lock);					\
+@@ -1694,6 +1814,21 @@
+ UAC1_ATTRIBUTE_STRING(c_ot_name);
+ UAC1_ATTRIBUTE_STRING(c_fu_vol_name);
+ 
++UAC1_ATTRIBUTE_STRING(c_alt0_name);
++UAC1_ATTRIBUTE_STRING(c_alt1_name);
++UAC1_ATTRIBUTE_STRING(p_alt0_name);
++UAC1_ATTRIBUTE_STRING(p_alt1_name);
++
++UAC1_ATTRIBUTE(u32, c_terminal_type);
++UAC1_ATTRIBUTE(u32, p_terminal_type);
++UAC1_ATTRIBUTE(u32, c_max_packet_size);
++UAC1_ATTRIBUTE(u32, p_max_packet_size);
++UAC1_ATTRIBUTE(u32, c_hs_bint);
++UAC1_ATTRIBUTE(u32, p_hs_bint);
++UAC1_ATTRIBUTE(u32, c_ep_num);
++UAC1_ATTRIBUTE(u32, p_ep_num);
++UAC1_ATTRIBUTE(bool, int_ep_present);
++
+ static struct configfs_attribute *f_uac1_attrs[] = {
+ 	&f_uac1_opts_attr_c_chmask,
+ 	&f_uac1_opts_attr_c_srate,
+@@ -1727,6 +1862,21 @@
+ 	&f_uac1_opts_attr_c_ot_name,
+ 	&f_uac1_opts_attr_c_fu_vol_name,
+ 
++	&f_uac1_opts_attr_c_alt0_name,
++	&f_uac1_opts_attr_c_alt1_name,
++	&f_uac1_opts_attr_p_alt0_name,
++	&f_uac1_opts_attr_p_alt1_name,
++
++	&f_uac1_opts_attr_c_terminal_type,
++	&f_uac1_opts_attr_p_terminal_type,
++	&f_uac1_opts_attr_c_max_packet_size,
++	&f_uac1_opts_attr_p_max_packet_size,
++	&f_uac1_opts_attr_c_hs_bint,
++	&f_uac1_opts_attr_p_hs_bint,
++	&f_uac1_opts_attr_c_ep_num,
++	&f_uac1_opts_attr_p_ep_num,
++	&f_uac1_opts_attr_int_ep_present,
++
+ 	NULL,
+ };
+ 
+@@ -1790,6 +1940,17 @@
+ 	scnprintf(opts->c_it_ch_name, sizeof(opts->c_it_ch_name), "Playback Channels");
+ 	scnprintf(opts->c_ot_name, sizeof(opts->c_ot_name), "Playback Output terminal");
+ 	scnprintf(opts->c_fu_vol_name, sizeof(opts->c_fu_vol_name), "Playback Volume");
++
++	scnprintf(opts->c_alt0_name, sizeof(opts->c_alt0_name), "Playback Inactive");
++	scnprintf(opts->c_alt1_name, sizeof(opts->c_alt1_name), "Playback Active");
++	scnprintf(opts->p_alt0_name, sizeof(opts->p_alt0_name), "Capture Inactive");
++	scnprintf(opts->p_alt1_name, sizeof(opts->p_alt1_name), "Capture Active");
++
++	opts->c_terminal_type = UAC1_DEF_C_TERM_TYPE;
++	opts->p_terminal_type = UAC1_DEF_P_TERM_TYPE;
++	opts->c_hs_bint = UAC1_DEF_HS_BINT;
++	opts->p_hs_bint = UAC1_DEF_HS_BINT;
++	opts->int_ep_present = true;
+ 
+ 	return &opts->func_inst;
+ }
+diff --color -ru --color=never a/drivers/usb/gadget/function/u_uac1.h b/drivers/usb/gadget/function/u_uac1.h
+--- a/drivers/usb/gadget/function/u_uac1.h	2026-10-11 18:17:51
++++ b/drivers/usb/gadget/function/u_uac1.h	2026-10-11 18:18:05
+@@ -27,7 +27,11 @@
+ #define UAC1_DEF_MAX_DB		0		/* 0 dB */
+ #define UAC1_DEF_RES_DB		(1*256)	/* 1 dB */
+ 
++#define UAC1_DEF_C_TERM_TYPE	0x0301	/* speaker */
++#define UAC1_DEF_P_TERM_TYPE	0x0201	/* microphone */
++#define UAC1_DEF_HS_BINT	4	/* 2^(4-1) microframes = 1 ms */
+ 
++
+ struct f_uac1_opts {
+ 	struct usb_function_instance	func_inst;
+ 	int				c_chmask;
+@@ -51,6 +55,26 @@
+ 
+ 	int				req_number;
+ 	unsigned			bound:1;
++
++	/* wTerminalType of the non-USB terminals (headphones, headset mic...) */
++	u32				c_terminal_type;
++	u32				p_terminal_type;
++	/* 0: default wMaxPacketSize */
++	u32				c_max_packet_size;
++	u32				p_max_packet_size;
++	/* high-speed bInterval; full speed always uses 1 (1 ms) */
++	u32				c_hs_bint;
++	u32				p_hs_bint;
++	/* 0: any free endpoint number */
++	u32				c_ep_num;
++	u32				p_ep_num;
++	/* AudioControl interrupt endpoint (volume/mute change notifications) */
++	bool				int_ep_present;
++
++	char			c_alt0_name[USB_MAX_STRING_LEN];
++	char			c_alt1_name[USB_MAX_STRING_LEN];
++	char			p_alt0_name[USB_MAX_STRING_LEN];
++	char			p_alt1_name[USB_MAX_STRING_LEN];
+ 
+ 	char			function_name[USB_MAX_STRING_LEN];
+ 

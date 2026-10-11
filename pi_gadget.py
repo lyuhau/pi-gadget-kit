@@ -39,6 +39,9 @@ class Gadget:
         else:
             os.makedirs(self.path(rel), exist_ok=True)
 
+    def has(self, rel):
+        return self.dry or os.path.exists(self.path(rel))
+
     def symlink(self, target, link):
         if self.dry:
             print(f"ln -s  {target} -> {link}")
@@ -62,8 +65,14 @@ class Gadget:
                 return False
             sys.exit(f"missing configfs attribute: {p}")
         try:
-            with open(p, "wb") as f:
-                f.write(data)
+            # One write() call: buffered file objects retry short writes,
+            # which spins forever on configfs attributes that report fewer
+            # bytes than they consumed (stock usb_f_uac1 string attributes).
+            fd = os.open(p, os.O_WRONLY)
+            try:
+                os.write(fd, data)
+            finally:
+                os.close(fd)
             return True
         except OSError as e:
             if optional:
@@ -82,12 +91,29 @@ def hexw(v):
     return f"0x{v:04x}"
 
 
-def setup_audio(g, fn, inst, speed):
+def setup_audio(g, fn, inst, speed, descs):
     """uac1/uac2 attribute naming is from the gadget's side: c_* = the gadget
     captures (host plays to it, i.e. headphones), p_* = the gadget plays (mic)."""
     base = f"functions/{inst}"
     g.mkdir(base)
-    g.write(f"{base}/function_name", fn["name"], optional=True)
+    # alpine-module/patches/0001 adds these to uac1; the stock module lacks them.
+    patched = fn["kind"] == "uac1" and g.has(f"{base}/c_alt0_name")
+    if fn["kind"] == "uac1" and not patched:
+        g.skipped.append("stock usb_f_uac1: names, terminal types and endpoint layout can't be matched")
+
+    def name(rel, value):
+        # Patched module: an empty name means "no string", like a device whose
+        # descriptor has index 0. ("\n", since an empty write never reaches configfs.)
+        if patched:
+            g.write(rel, value if value else "\n", optional=True)
+        else:
+            g.write(rel, value, optional=True)
+
+    name(f"{base}/function_name", fn["name"])
+    if patched:
+        ac = next(d for d in descs if d["name"] == "INTERFACE"
+                  and d["interface"] == fn["control_interface"] and d["alt"] == 0)
+        g.write(f"{base}/int_ep_present", int(ac["bNumEndpoints"] > 0))
     for key, pfx in (("host_to_device", "c"), ("device_to_host", "p")):
         st = fn[key]
         if not st:
@@ -120,9 +146,19 @@ def setup_audio(g, fn, inst, speed):
             g.write(f"{base}/{pfx}_terminal_type", st["terminal_type"], optional=True)
         # The physical terminal is the gadget's output (c) or input (p) terminal.
         phys, usb_side = ("ot", "it") if pfx == "c" else ("it", "ot")
-        g.write(f"{base}/{pfx}_{phys}_name", st["terminal_name"], optional=True)
-        g.write(f"{base}/{pfx}_{usb_side}_name", st["usb_terminal_name"], optional=True)
-        g.write(f"{base}/{pfx}_fu_vol_name", st["fu_name"], optional=True)
+        name(f"{base}/{pfx}_{phys}_name", st["terminal_name"])
+        name(f"{base}/{pfx}_{usb_side}_name", st["usb_terminal_name"])
+        name(f"{base}/{pfx}_fu_vol_name", st["fu_name"])
+        if patched:
+            alt_names = {}
+            for d in descs:
+                if d["name"] == "INTERFACE" and d["interface"] == st["interface"]:
+                    alt_names[d["bAlternateSetting"]] = d["iInterface"]
+            name(f"{base}/{pfx}_it_ch_name", None)  # channel names: none captured
+            name(f"{base}/{pfx}_alt0_name", None if not alt_names.get(0) else "Inactive")
+            name(f"{base}/{pfx}_alt1_name", None if not alt_names.get(1) else "Active")
+            g.write(f"{base}/{pfx}_max_packet_size", a["wMaxPacketSize"])
+            g.write(f"{base}/{pfx}_ep_num", a["endpoint"] & 0x0F)
         if len(st["alts"]) > 1:
             g.skipped.append(f"{key}: only the first of {len(st['alts'])} alternate formats is reproduced")
 
@@ -194,7 +230,7 @@ def cmd_up(args):
     for fn in m["functions"]:  # symlink order = interface order the host sees
         if fn["kind"] in ("uac1", "uac2"):
             inst = f"{fn['kind']}.0"
-            setup_audio(g, fn, inst, speed)
+            setup_audio(g, fn, inst, speed, cap["configurations"][0]["descriptors"])
             g.symlink(f"functions/{inst}", f"configs/c.1/{inst}")
         elif fn["kind"] == "hid":
             inst = f"hid.{hid_n}"

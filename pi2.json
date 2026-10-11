@@ -1,0 +1,1101 @@
+{
+  "tool": "capture_usb.py",
+  "devices": [
+    {
+      "captured_at": "2026-10-11T18:24:59",
+      "host": "Darwin 26.2",
+      "bus": 0,
+      "address": 2,
+      "speed": "full-speed",
+      "errors": [
+        "HID report descriptor if3: [Errno 13] Access denied (insufficient permissions)",
+        "HID report descriptor if4: [Errno 13] Access denied (insufficient permissions)",
+        "HID report descriptor if5: [Errno 13] Access denied (insufficient permissions)",
+        "feature unit 5 volume range: [Errno 13] Access denied (insufficient permissions)",
+        "feature unit 5 volume range: [Errno 13] Access denied (insufficient permissions)",
+        "feature unit 5 volume range: [Errno 13] Access denied (insufficient permissions)",
+        "feature unit 6 volume range: [Errno 13] Access denied (insufficient permissions)",
+        "feature unit 6 volume range: [Errno 13] Access denied (insufficient permissions)",
+        "feature unit 6 volume range: [Errno 13] Access denied (insufficient permissions)"
+      ],
+      "device_descriptor": {
+        "raw": "120100020000004038100a23100101020301",
+        "bcdUSB": 512,
+        "bDeviceClass": 0,
+        "bDeviceSubClass": 0,
+        "bDeviceProtocol": 0,
+        "bMaxPacketSize0": 64,
+        "idVendor": 4152,
+        "idProduct": 8970,
+        "bcdDevice": 272,
+        "iManufacturer": 1,
+        "iProduct": 2,
+        "iSerialNumber": 3,
+        "bNumConfigurations": 1
+      },
+      "configurations": [
+        {
+          "index": 0,
+          "raw": "0902110106010080320904000000010100000a240100014c000201020c24020101010002030000000924030302030005000d2406050102030000000000000c24020202040001010000000924030401010006000b24060602020300000000090401000001020000090401010101020000072401010101000b2402010202100180bb0009050309c00001000007250101010100090402000001020000090402010101020000072401040101000b2402010102100180bb000905830560000100000725010100000009040300010300001209210101000122250007058103400001090404000103000014092101010001222d0007058203040001090405000103000016092101010001221e0007058403400001",
+          "descriptors": [
+            {
+              "bDescriptorType": 2,
+              "name": "CONFIGURATION",
+              "wTotalLength": 273,
+              "bNumInterfaces": 6,
+              "bConfigurationValue": 1,
+              "iConfiguration": 0,
+              "bmAttributes": 128,
+              "bMaxPower": 50,
+              "interface": null,
+              "alt": null,
+              "raw": "090211010601008032"
+            },
+            {
+              "bDescriptorType": 4,
+              "name": "INTERFACE",
+              "bInterfaceNumber": 0,
+              "bAlternateSetting": 0,
+              "bNumEndpoints": 0,
+              "bInterfaceClass": 1,
+              "bInterfaceSubClass": 1,
+              "bInterfaceProtocol": 0,
+              "iInterface": 0,
+              "interface": 0,
+              "alt": 0,
+              "raw": "090400000001010000"
+            },
+            {
+              "bDescriptorType": 36,
+              "subtype": 1,
+              "name": "AC_HEADER",
+              "bcdADC": 256,
+              "wTotalLength": 76,
+              "baInterfaceNr": [
+                1,
+                2
+              ],
+              "interface": 0,
+              "alt": 0,
+              "raw": "0a240100014c00020102"
+            },
+            {
+              "bDescriptorType": 36,
+              "subtype": 2,
+              "name": "INPUT_TERMINAL",
+              "bTerminalID": 1,
+              "wTerminalType": 257,
+              "bAssocTerminal": 0,
+              "bNrChannels": 2,
+              "bmChannelConfig": 3,
+              "iChannelNames": 0,
+              "iTerminal": 0,
+              "interface": 0,
+              "alt": 0,
+              "raw": "0c2402010101000203000000"
+            },
+            {
+              "bDescriptorType": 36,
+              "subtype": 3,
+              "name": "OUTPUT_TERMINAL",
+              "bTerminalID": 3,
+              "wTerminalType": 770,
+              "bAssocTerminal": 0,
+              "bSourceID": 5,
+              "iTerminal": 0,
+              "interface": 0,
+              "alt": 0,
+              "raw": "092403030203000500"
+            },
+            {
+              "bDescriptorType": 36,
+              "subtype": 6,
+              "name": "FEATURE_UNIT",
+              "bUnitID": 5,
+              "bSourceID": 1,
+              "bControlSize": 2,
+              "bmaControls": [
+                3,
+                0,
+                0
+              ],
+              "iFeature": 0,
+              "interface": 0,
+              "alt": 0,
+              "raw": "0d240605010203000000000000"
+            },
+            {
+              "bDescriptorType": 36,
+              "subtype": 2,
+              "name": "INPUT_TERMINAL",
+              "bTerminalID": 2,
+              "wTerminalType": 1026,
+              "bAssocTerminal": 0,
+              "bNrChannels": 1,
+              "bmChannelConfig": 1,
+              "iChannelNames": 0,
+              "iTerminal": 0,
+              "interface": 0,
+              "alt": 0,
+              "raw": "0c2402020204000101000000"
+            },
+            {
+              "bDescriptorType": 36,
+              "subtype": 3,
+              "name": "OUTPUT_TERMINAL",
+              "bTerminalID": 4,
+              "wTerminalType": 257,
+              "bAssocTerminal": 0,
+              "bSourceID": 6,
+              "iTerminal": 0,
+              "interface": 0,
+              "alt": 0,
+              "raw": "092403040101000600"
+            },
+            {
+              "bDescriptorType": 36,
+              "subtype": 6,
+              "name": "FEATURE_UNIT",
+              "bUnitID": 6,
+              "bSourceID": 2,
+              "bControlSize": 2,
+              "bmaControls": [
+                3,
+                0
+              ],
+              "iFeature": 0,
+              "interface": 0,
+              "alt": 0,
+              "raw": "0b24060602020300000000"
+            },
+            {
+              "bDescriptorType": 4,
+              "name": "INTERFACE",
+              "bInterfaceNumber": 1,
+              "bAlternateSetting": 0,
+              "bNumEndpoints": 0,
+              "bInterfaceClass": 1,
+              "bInterfaceSubClass": 2,
+              "bInterfaceProtocol": 0,
+              "iInterface": 0,
+              "interface": 1,
+              "alt": 0,
+              "raw": "090401000001020000"
+            },
+            {
+              "bDescriptorType": 4,
+              "name": "INTERFACE",
+              "bInterfaceNumber": 1,
+              "bAlternateSetting": 1,
+              "bNumEndpoints": 1,
+              "bInterfaceClass": 1,
+              "bInterfaceSubClass": 2,
+              "bInterfaceProtocol": 0,
+              "iInterface": 0,
+              "interface": 1,
+              "alt": 1,
+              "raw": "090401010101020000"
+            },
+            {
+              "bDescriptorType": 36,
+              "subtype": 1,
+              "name": "AS_GENERAL",
+              "bTerminalLink": 1,
+              "bDelay": 1,
+              "wFormatTag": 1,
+              "interface": 1,
+              "alt": 1,
+              "raw": "07240101010100"
+            },
+            {
+              "bDescriptorType": 36,
+              "subtype": 2,
+              "name": "FORMAT_TYPE",
+              "bFormatType": 1,
+              "bNrChannels": 2,
+              "bSubslotSize": 2,
+              "bBitResolution": 16,
+              "bSamFreqType": 1,
+              "tSamFreq": [
+                48000
+              ],
+              "interface": 1,
+              "alt": 1,
+              "raw": "0b2402010202100180bb00"
+            },
+            {
+              "bDescriptorType": 5,
+              "name": "ENDPOINT",
+              "bEndpointAddress": 3,
+              "direction": "OUT",
+              "bmAttributes": 9,
+              "transfer": "isochronous",
+              "sync": "adaptive",
+              "usage": "data",
+              "wMaxPacketSize": 192,
+              "mult": 0,
+              "bInterval": 1,
+              "bRefresh": 0,
+              "bSynchAddress": 0,
+              "interface": 1,
+              "alt": 1,
+              "raw": "09050309c000010000"
+            },
+            {
+              "bDescriptorType": 37,
+              "name": "AS_ENDPOINT",
+              "bmAttributes": 1,
+              "bLockDelayUnits": 1,
+              "wLockDelay": 1,
+              "interface": 1,
+              "alt": 1,
+              "raw": "07250101010100"
+            },
+            {
+              "bDescriptorType": 4,
+              "name": "INTERFACE",
+              "bInterfaceNumber": 2,
+              "bAlternateSetting": 0,
+              "bNumEndpoints": 0,
+              "bInterfaceClass": 1,
+              "bInterfaceSubClass": 2,
+              "bInterfaceProtocol": 0,
+              "iInterface": 0,
+              "interface": 2,
+              "alt": 0,
+              "raw": "090402000001020000"
+            },
+            {
+              "bDescriptorType": 4,
+              "name": "INTERFACE",
+              "bInterfaceNumber": 2,
+              "bAlternateSetting": 1,
+              "bNumEndpoints": 1,
+              "bInterfaceClass": 1,
+              "bInterfaceSubClass": 2,
+              "bInterfaceProtocol": 0,
+              "iInterface": 0,
+              "interface": 2,
+              "alt": 1,
+              "raw": "090402010101020000"
+            },
+            {
+              "bDescriptorType": 36,
+              "subtype": 1,
+              "name": "AS_GENERAL",
+              "bTerminalLink": 4,
+              "bDelay": 1,
+              "wFormatTag": 1,
+              "interface": 2,
+              "alt": 1,
+              "raw": "07240104010100"
+            },
+            {
+              "bDescriptorType": 36,
+              "subtype": 2,
+              "name": "FORMAT_TYPE",
+              "bFormatType": 1,
+              "bNrChannels": 1,
+              "bSubslotSize": 2,
+              "bBitResolution": 16,
+              "bSamFreqType": 1,
+              "tSamFreq": [
+                48000
+              ],
+              "interface": 2,
+              "alt": 1,
+              "raw": "0b2402010102100180bb00"
+            },
+            {
+              "bDescriptorType": 5,
+              "name": "ENDPOINT",
+              "bEndpointAddress": 131,
+              "direction": "IN",
+              "bmAttributes": 5,
+              "transfer": "isochronous",
+              "sync": "async",
+              "usage": "data",
+              "wMaxPacketSize": 96,
+              "mult": 0,
+              "bInterval": 1,
+              "bRefresh": 0,
+              "bSynchAddress": 0,
+              "interface": 2,
+              "alt": 1,
+              "raw": "090583056000010000"
+            },
+            {
+              "bDescriptorType": 37,
+              "name": "AS_ENDPOINT",
+              "bmAttributes": 1,
+              "bLockDelayUnits": 0,
+              "wLockDelay": 0,
+              "interface": 2,
+              "alt": 1,
+              "raw": "07250101000000"
+            },
+            {
+              "bDescriptorType": 4,
+              "name": "INTERFACE",
+              "bInterfaceNumber": 3,
+              "bAlternateSetting": 0,
+              "bNumEndpoints": 1,
+              "bInterfaceClass": 3,
+              "bInterfaceSubClass": 0,
+              "bInterfaceProtocol": 0,
+              "iInterface": 18,
+              "interface": 3,
+              "alt": 0,
+              "raw": "090403000103000012"
+            },
+            {
+              "bDescriptorType": 33,
+              "name": "HID",
+              "bcdHID": 257,
+              "bCountryCode": 0,
+              "bNumDescriptors": 1,
+              "descriptors": [
+                {
+                  "bDescriptorType": 34,
+                  "wDescriptorLength": 37
+                }
+              ],
+              "interface": 3,
+              "alt": 0,
+              "raw": "092101010001222500"
+            },
+            {
+              "bDescriptorType": 5,
+              "name": "ENDPOINT",
+              "bEndpointAddress": 129,
+              "direction": "IN",
+              "bmAttributes": 3,
+              "transfer": "interrupt",
+              "sync": "none",
+              "usage": "data",
+              "wMaxPacketSize": 64,
+              "mult": 0,
+              "bInterval": 1,
+              "interface": 3,
+              "alt": 0,
+              "raw": "07058103400001"
+            },
+            {
+              "bDescriptorType": 4,
+              "name": "INTERFACE",
+              "bInterfaceNumber": 4,
+              "bAlternateSetting": 0,
+              "bNumEndpoints": 1,
+              "bInterfaceClass": 3,
+              "bInterfaceSubClass": 0,
+              "bInterfaceProtocol": 0,
+              "iInterface": 20,
+              "interface": 4,
+              "alt": 0,
+              "raw": "090404000103000014"
+            },
+            {
+              "bDescriptorType": 33,
+              "name": "HID",
+              "bcdHID": 257,
+              "bCountryCode": 0,
+              "bNumDescriptors": 1,
+              "descriptors": [
+                {
+                  "bDescriptorType": 34,
+                  "wDescriptorLength": 45
+                }
+              ],
+              "interface": 4,
+              "alt": 0,
+              "raw": "092101010001222d00"
+            },
+            {
+              "bDescriptorType": 5,
+              "name": "ENDPOINT",
+              "bEndpointAddress": 130,
+              "direction": "IN",
+              "bmAttributes": 3,
+              "transfer": "interrupt",
+              "sync": "none",
+              "usage": "data",
+              "wMaxPacketSize": 4,
+              "mult": 0,
+              "bInterval": 1,
+              "interface": 4,
+              "alt": 0,
+              "raw": "07058203040001"
+            },
+            {
+              "bDescriptorType": 4,
+              "name": "INTERFACE",
+              "bInterfaceNumber": 5,
+              "bAlternateSetting": 0,
+              "bNumEndpoints": 1,
+              "bInterfaceClass": 3,
+              "bInterfaceSubClass": 0,
+              "bInterfaceProtocol": 0,
+              "iInterface": 22,
+              "interface": 5,
+              "alt": 0,
+              "raw": "090405000103000016"
+            },
+            {
+              "bDescriptorType": 33,
+              "name": "HID",
+              "bcdHID": 257,
+              "bCountryCode": 0,
+              "bNumDescriptors": 1,
+              "descriptors": [
+                {
+                  "bDescriptorType": 34,
+                  "wDescriptorLength": 30
+                }
+              ],
+              "interface": 5,
+              "alt": 0,
+              "raw": "092101010001221e00"
+            },
+            {
+              "bDescriptorType": 5,
+              "name": "ENDPOINT",
+              "bEndpointAddress": 132,
+              "direction": "IN",
+              "bmAttributes": 3,
+              "transfer": "interrupt",
+              "sync": "none",
+              "usage": "data",
+              "wMaxPacketSize": 64,
+              "mult": 0,
+              "bInterval": 1,
+              "interface": 5,
+              "alt": 0,
+              "raw": "07058403400001"
+            }
+          ]
+        }
+      ],
+      "device_qualifier": {
+        "raw": "0a060002000000400100"
+      },
+      "other_speed_configuration": {
+        "raw": "0907110106010080320904000000010100000a240100014c000201020c24020101010002030000000924030302030005000d2406050102030000000000000c24020202040001010000000924030401010006000b24060602020300000000090401000001020000090401010101020000072401010101000b2402010202100180bb0009050309c00004000007250101010100090402000001020000090402010101020000072401040101000b2402010102100180bb000905830560000400000725010100000009040300010300001209210101000122250007058103400001090404000103000014092101010001222d0007058203040001090405000103000016092101010001221e0007058403400001",
+        "descriptors": [
+          {
+            "bDescriptorType": 7,
+            "name": "UNKNOWN_0x07",
+            "interface": null,
+            "alt": null,
+            "raw": "090711010601008032"
+          },
+          {
+            "bDescriptorType": 4,
+            "name": "INTERFACE",
+            "bInterfaceNumber": 0,
+            "bAlternateSetting": 0,
+            "bNumEndpoints": 0,
+            "bInterfaceClass": 1,
+            "bInterfaceSubClass": 1,
+            "bInterfaceProtocol": 0,
+            "iInterface": 0,
+            "interface": 0,
+            "alt": 0,
+            "raw": "090400000001010000"
+          },
+          {
+            "bDescriptorType": 36,
+            "subtype": 1,
+            "name": "AC_HEADER",
+            "bcdADC": 256,
+            "wTotalLength": 76,
+            "baInterfaceNr": [
+              1,
+              2
+            ],
+            "interface": 0,
+            "alt": 0,
+            "raw": "0a240100014c00020102"
+          },
+          {
+            "bDescriptorType": 36,
+            "subtype": 2,
+            "name": "INPUT_TERMINAL",
+            "bTerminalID": 1,
+            "wTerminalType": 257,
+            "bAssocTerminal": 0,
+            "bNrChannels": 2,
+            "bmChannelConfig": 3,
+            "iChannelNames": 0,
+            "iTerminal": 0,
+            "interface": 0,
+            "alt": 0,
+            "raw": "0c2402010101000203000000"
+          },
+          {
+            "bDescriptorType": 36,
+            "subtype": 3,
+            "name": "OUTPUT_TERMINAL",
+            "bTerminalID": 3,
+            "wTerminalType": 770,
+            "bAssocTerminal": 0,
+            "bSourceID": 5,
+            "iTerminal": 0,
+            "interface": 0,
+            "alt": 0,
+            "raw": "092403030203000500"
+          },
+          {
+            "bDescriptorType": 36,
+            "subtype": 6,
+            "name": "FEATURE_UNIT",
+            "bUnitID": 5,
+            "bSourceID": 1,
+            "bControlSize": 2,
+            "bmaControls": [
+              3,
+              0,
+              0
+            ],
+            "iFeature": 0,
+            "interface": 0,
+            "alt": 0,
+            "raw": "0d240605010203000000000000"
+          },
+          {
+            "bDescriptorType": 36,
+            "subtype": 2,
+            "name": "INPUT_TERMINAL",
+            "bTerminalID": 2,
+            "wTerminalType": 1026,
+            "bAssocTerminal": 0,
+            "bNrChannels": 1,
+            "bmChannelConfig": 1,
+            "iChannelNames": 0,
+            "iTerminal": 0,
+            "interface": 0,
+            "alt": 0,
+            "raw": "0c2402020204000101000000"
+          },
+          {
+            "bDescriptorType": 36,
+            "subtype": 3,
+            "name": "OUTPUT_TERMINAL",
+            "bTerminalID": 4,
+            "wTerminalType": 257,
+            "bAssocTerminal": 0,
+            "bSourceID": 6,
+            "iTerminal": 0,
+            "interface": 0,
+            "alt": 0,
+            "raw": "092403040101000600"
+          },
+          {
+            "bDescriptorType": 36,
+            "subtype": 6,
+            "name": "FEATURE_UNIT",
+            "bUnitID": 6,
+            "bSourceID": 2,
+            "bControlSize": 2,
+            "bmaControls": [
+              3,
+              0
+            ],
+            "iFeature": 0,
+            "interface": 0,
+            "alt": 0,
+            "raw": "0b24060602020300000000"
+          },
+          {
+            "bDescriptorType": 4,
+            "name": "INTERFACE",
+            "bInterfaceNumber": 1,
+            "bAlternateSetting": 0,
+            "bNumEndpoints": 0,
+            "bInterfaceClass": 1,
+            "bInterfaceSubClass": 2,
+            "bInterfaceProtocol": 0,
+            "iInterface": 0,
+            "interface": 1,
+            "alt": 0,
+            "raw": "090401000001020000"
+          },
+          {
+            "bDescriptorType": 4,
+            "name": "INTERFACE",
+            "bInterfaceNumber": 1,
+            "bAlternateSetting": 1,
+            "bNumEndpoints": 1,
+            "bInterfaceClass": 1,
+            "bInterfaceSubClass": 2,
+            "bInterfaceProtocol": 0,
+            "iInterface": 0,
+            "interface": 1,
+            "alt": 1,
+            "raw": "090401010101020000"
+          },
+          {
+            "bDescriptorType": 36,
+            "subtype": 1,
+            "name": "AS_GENERAL",
+            "bTerminalLink": 1,
+            "bDelay": 1,
+            "wFormatTag": 1,
+            "interface": 1,
+            "alt": 1,
+            "raw": "07240101010100"
+          },
+          {
+            "bDescriptorType": 36,
+            "subtype": 2,
+            "name": "FORMAT_TYPE",
+            "bFormatType": 1,
+            "bNrChannels": 2,
+            "bSubslotSize": 2,
+            "bBitResolution": 16,
+            "bSamFreqType": 1,
+            "tSamFreq": [
+              48000
+            ],
+            "interface": 1,
+            "alt": 1,
+            "raw": "0b2402010202100180bb00"
+          },
+          {
+            "bDescriptorType": 5,
+            "name": "ENDPOINT",
+            "bEndpointAddress": 3,
+            "direction": "OUT",
+            "bmAttributes": 9,
+            "transfer": "isochronous",
+            "sync": "adaptive",
+            "usage": "data",
+            "wMaxPacketSize": 192,
+            "mult": 0,
+            "bInterval": 4,
+            "bRefresh": 0,
+            "bSynchAddress": 0,
+            "interface": 1,
+            "alt": 1,
+            "raw": "09050309c000040000"
+          },
+          {
+            "bDescriptorType": 37,
+            "name": "AS_ENDPOINT",
+            "bmAttributes": 1,
+            "bLockDelayUnits": 1,
+            "wLockDelay": 1,
+            "interface": 1,
+            "alt": 1,
+            "raw": "07250101010100"
+          },
+          {
+            "bDescriptorType": 4,
+            "name": "INTERFACE",
+            "bInterfaceNumber": 2,
+            "bAlternateSetting": 0,
+            "bNumEndpoints": 0,
+            "bInterfaceClass": 1,
+            "bInterfaceSubClass": 2,
+            "bInterfaceProtocol": 0,
+            "iInterface": 0,
+            "interface": 2,
+            "alt": 0,
+            "raw": "090402000001020000"
+          },
+          {
+            "bDescriptorType": 4,
+            "name": "INTERFACE",
+            "bInterfaceNumber": 2,
+            "bAlternateSetting": 1,
+            "bNumEndpoints": 1,
+            "bInterfaceClass": 1,
+            "bInterfaceSubClass": 2,
+            "bInterfaceProtocol": 0,
+            "iInterface": 0,
+            "interface": 2,
+            "alt": 1,
+            "raw": "090402010101020000"
+          },
+          {
+            "bDescriptorType": 36,
+            "subtype": 1,
+            "name": "AS_GENERAL",
+            "bTerminalLink": 4,
+            "bDelay": 1,
+            "wFormatTag": 1,
+            "interface": 2,
+            "alt": 1,
+            "raw": "07240104010100"
+          },
+          {
+            "bDescriptorType": 36,
+            "subtype": 2,
+            "name": "FORMAT_TYPE",
+            "bFormatType": 1,
+            "bNrChannels": 1,
+            "bSubslotSize": 2,
+            "bBitResolution": 16,
+            "bSamFreqType": 1,
+            "tSamFreq": [
+              48000
+            ],
+            "interface": 2,
+            "alt": 1,
+            "raw": "0b2402010102100180bb00"
+          },
+          {
+            "bDescriptorType": 5,
+            "name": "ENDPOINT",
+            "bEndpointAddress": 131,
+            "direction": "IN",
+            "bmAttributes": 5,
+            "transfer": "isochronous",
+            "sync": "async",
+            "usage": "data",
+            "wMaxPacketSize": 96,
+            "mult": 0,
+            "bInterval": 4,
+            "bRefresh": 0,
+            "bSynchAddress": 0,
+            "interface": 2,
+            "alt": 1,
+            "raw": "090583056000040000"
+          },
+          {
+            "bDescriptorType": 37,
+            "name": "AS_ENDPOINT",
+            "bmAttributes": 1,
+            "bLockDelayUnits": 0,
+            "wLockDelay": 0,
+            "interface": 2,
+            "alt": 1,
+            "raw": "07250101000000"
+          },
+          {
+            "bDescriptorType": 4,
+            "name": "INTERFACE",
+            "bInterfaceNumber": 3,
+            "bAlternateSetting": 0,
+            "bNumEndpoints": 1,
+            "bInterfaceClass": 3,
+            "bInterfaceSubClass": 0,
+            "bInterfaceProtocol": 0,
+            "iInterface": 18,
+            "interface": 3,
+            "alt": 0,
+            "raw": "090403000103000012"
+          },
+          {
+            "bDescriptorType": 33,
+            "name": "HID",
+            "bcdHID": 257,
+            "bCountryCode": 0,
+            "bNumDescriptors": 1,
+            "descriptors": [
+              {
+                "bDescriptorType": 34,
+                "wDescriptorLength": 37
+              }
+            ],
+            "interface": 3,
+            "alt": 0,
+            "raw": "092101010001222500"
+          },
+          {
+            "bDescriptorType": 5,
+            "name": "ENDPOINT",
+            "bEndpointAddress": 129,
+            "direction": "IN",
+            "bmAttributes": 3,
+            "transfer": "interrupt",
+            "sync": "none",
+            "usage": "data",
+            "wMaxPacketSize": 64,
+            "mult": 0,
+            "bInterval": 1,
+            "interface": 3,
+            "alt": 0,
+            "raw": "07058103400001"
+          },
+          {
+            "bDescriptorType": 4,
+            "name": "INTERFACE",
+            "bInterfaceNumber": 4,
+            "bAlternateSetting": 0,
+            "bNumEndpoints": 1,
+            "bInterfaceClass": 3,
+            "bInterfaceSubClass": 0,
+            "bInterfaceProtocol": 0,
+            "iInterface": 20,
+            "interface": 4,
+            "alt": 0,
+            "raw": "090404000103000014"
+          },
+          {
+            "bDescriptorType": 33,
+            "name": "HID",
+            "bcdHID": 257,
+            "bCountryCode": 0,
+            "bNumDescriptors": 1,
+            "descriptors": [
+              {
+                "bDescriptorType": 34,
+                "wDescriptorLength": 45
+              }
+            ],
+            "interface": 4,
+            "alt": 0,
+            "raw": "092101010001222d00"
+          },
+          {
+            "bDescriptorType": 5,
+            "name": "ENDPOINT",
+            "bEndpointAddress": 130,
+            "direction": "IN",
+            "bmAttributes": 3,
+            "transfer": "interrupt",
+            "sync": "none",
+            "usage": "data",
+            "wMaxPacketSize": 4,
+            "mult": 0,
+            "bInterval": 1,
+            "interface": 4,
+            "alt": 0,
+            "raw": "07058203040001"
+          },
+          {
+            "bDescriptorType": 4,
+            "name": "INTERFACE",
+            "bInterfaceNumber": 5,
+            "bAlternateSetting": 0,
+            "bNumEndpoints": 1,
+            "bInterfaceClass": 3,
+            "bInterfaceSubClass": 0,
+            "bInterfaceProtocol": 0,
+            "iInterface": 22,
+            "interface": 5,
+            "alt": 0,
+            "raw": "090405000103000016"
+          },
+          {
+            "bDescriptorType": 33,
+            "name": "HID",
+            "bcdHID": 257,
+            "bCountryCode": 0,
+            "bNumDescriptors": 1,
+            "descriptors": [
+              {
+                "bDescriptorType": 34,
+                "wDescriptorLength": 30
+              }
+            ],
+            "interface": 5,
+            "alt": 0,
+            "raw": "092101010001221e00"
+          },
+          {
+            "bDescriptorType": 5,
+            "name": "ENDPOINT",
+            "bEndpointAddress": 132,
+            "direction": "IN",
+            "bmAttributes": 3,
+            "transfer": "interrupt",
+            "sync": "none",
+            "usage": "data",
+            "wMaxPacketSize": 64,
+            "mult": 0,
+            "bInterval": 1,
+            "interface": 5,
+            "alt": 0,
+            "raw": "07058403400001"
+          }
+        ]
+      },
+      "strings": {
+        "0x0409": {
+          "1": "SteelSeries",
+          "2": "Arctis GameBuds",
+          "3": "",
+          "4": "",
+          "5": "",
+          "6": "",
+          "7": "",
+          "8": "",
+          "9": "",
+          "10": "",
+          "11": "",
+          "12": "",
+          "13": "",
+          "14": "",
+          "15": "",
+          "16": "",
+          "18": "HID Interface",
+          "20": "HID Interface",
+          "22": "HID Interface"
+        }
+      },
+      "langids": [
+        1033
+      ],
+      "hid_report_descriptors": {
+        "3": {
+          "raw": "06c0ff0901a10106c1ff150026ff00750809f09540810209f19540910209f2960202b102c0",
+          "source": "ioreg"
+        },
+        "4": {
+          "raw": "050c0901a10109e909ea750195021500250181027506950181039503750109b609cd09b58102751595018103c0",
+          "source": "ioreg"
+        },
+        "5": {
+          "raw": "0600ff0901a1010601ff150026ff00750809f09540810209f195409102c0",
+          "source": "ioreg"
+        }
+      },
+      "uac_requests": {
+        "clocks": {},
+        "volume": {},
+        "coreaudio_volume": {
+          "output": {
+            "min_db": -77.0,
+            "max_db": 0.0,
+            "element": 0
+          },
+          "input": {
+            "min_db": -83.0,
+            "max_db": 0.0,
+            "element": 0
+          }
+        }
+      },
+      "model": {
+        "device": {
+          "idVendor": 4152,
+          "idProduct": 8970,
+          "bcdDevice": 272,
+          "bcdUSB": 512,
+          "bDeviceClass": 0,
+          "bDeviceSubClass": 0,
+          "bDeviceProtocol": 0,
+          "bMaxPacketSize0": 64
+        },
+        "speed": "full-speed",
+        "strings": {
+          "manufacturer": "SteelSeries",
+          "product": "Arctis GameBuds",
+          "serialnumber": ""
+        },
+        "config": {
+          "bmAttributes": 128,
+          "configuration": null,
+          "max_power_ma": 100
+        },
+        "functions": [
+          {
+            "kind": "uac1",
+            "control_interface": 0,
+            "name": null,
+            "host_to_device": {
+              "interface": 1,
+              "alts": [
+                {
+                  "alt": 1,
+                  "terminal_link": 1,
+                  "channels": 2,
+                  "chmask": 3,
+                  "subslot_bytes": 2,
+                  "bit_resolution": 16,
+                  "rates": [
+                    48000
+                  ],
+                  "endpoint": 3,
+                  "sync": "adaptive",
+                  "wMaxPacketSize": 192,
+                  "bInterval": 1,
+                  "has_feedback_endpoint": false
+                }
+              ],
+              "terminal_type": 770,
+              "terminal_type_name": "headphones",
+              "terminal_name": null,
+              "usb_terminal_name": null,
+              "mute": true,
+              "volume": {
+                "min": -19712,
+                "max": 0,
+                "res": null,
+                "source": "coreaudio"
+              },
+              "fu_name": null
+            },
+            "device_to_host": {
+              "interface": 2,
+              "alts": [
+                {
+                  "alt": 1,
+                  "terminal_link": 4,
+                  "channels": 1,
+                  "chmask": 1,
+                  "subslot_bytes": 2,
+                  "bit_resolution": 16,
+                  "rates": [
+                    48000
+                  ],
+                  "endpoint": 131,
+                  "sync": "async",
+                  "wMaxPacketSize": 96,
+                  "bInterval": 1,
+                  "has_feedback_endpoint": false
+                }
+              ],
+              "terminal_type": 1026,
+              "terminal_type_name": "headset",
+              "terminal_name": null,
+              "usb_terminal_name": null,
+              "mute": true,
+              "volume": {
+                "min": -21248,
+                "max": 0,
+                "res": null,
+                "source": "coreaudio"
+              },
+              "fu_name": null
+            }
+          },
+          {
+            "kind": "hid",
+            "interface": 3,
+            "subclass": 0,
+            "protocol": 0,
+            "name": "HID Interface",
+            "report_length": 64,
+            "bInterval": 1,
+            "has_out_endpoint": false,
+            "report_desc": "06c0ff0901a10106c1ff150026ff00750809f09540810209f19540910209f2960202b102c0"
+          },
+          {
+            "kind": "hid",
+            "interface": 4,
+            "subclass": 0,
+            "protocol": 0,
+            "name": "HID Interface",
+            "report_length": 4,
+            "bInterval": 1,
+            "has_out_endpoint": false,
+            "report_desc": "050c0901a10109e909ea750195021500250181027506950181039503750109b609cd09b58102751595018103c0"
+          },
+          {
+            "kind": "hid",
+            "interface": 5,
+            "subclass": 0,
+            "protocol": 0,
+            "name": "HID Interface",
+            "report_length": 64,
+            "bInterval": 1,
+            "has_out_endpoint": false,
+            "report_desc": "0600ff0901a1010601ff150026ff00750809f09540810209f195409102c0"
+          }
+        ]
+      }
+    }
+  ]
+}
