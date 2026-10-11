@@ -173,8 +173,9 @@ def cmd_up(args):
     g.write("bDeviceSubClass", hexw(dv["bDeviceSubClass"]))
     g.write("bDeviceProtocol", hexw(dv["bDeviceProtocol"]))
     g.write("bMaxPacketSize0", dv["bMaxPacketSize0"], optional=True)
-    if m["speed"] in ("full-speed", "high-speed"):
-        g.write("max_speed", m["speed"], optional=True)
+    speed = args.max_speed or m["speed"]
+    if speed in ("full-speed", "high-speed"):
+        g.write("max_speed", speed, optional=True)
 
     g.mkdir(f"strings/{LANG}")
     for key in ("manufacturer", "product", "serialnumber"):
@@ -193,7 +194,7 @@ def cmd_up(args):
     for fn in m["functions"]:  # symlink order = interface order the host sees
         if fn["kind"] in ("uac1", "uac2"):
             inst = f"{fn['kind']}.0"
-            setup_audio(g, fn, inst, m["speed"])
+            setup_audio(g, fn, inst, speed)
             g.symlink(f"functions/{inst}", f"configs/c.1/{inst}")
         elif fn["kind"] == "hid":
             inst = f"hid.{hid_n}"
@@ -323,6 +324,8 @@ def main():
     u.add_argument("capture")
     u.add_argument("--device", type=int, help="which device in the capture (default: first non-hub)")
     u.add_argument("--test-ids", action="store_true", help="use test VID:PID 1209:0001 instead of the captured ones")
+    u.add_argument("--max-speed", choices=["full-speed", "high-speed"],
+                   help="override the captured speed (the Pi's controller handles audio at high speed more reliably)")
     u.add_argument("--dry-run", action="store_true")
     u.set_defaults(fn=cmd_up)
     sub.add_parser("down", help="detach and remove the gadget").set_defaults(fn=cmd_down)
