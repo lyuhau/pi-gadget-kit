@@ -23,6 +23,27 @@ PACKAGES = ["alpine-base", "openssh", "wpa_supplicant", "ifupdown-ng", "chrony",
 # wpa_supplicant/networking go in "default" so the boot runlevel (which loads
 # the Wi-Fi driver and firmware) has finished and wlan0 exists by then.
 SERVICES = {"default": ["wpa_supplicant", "networking", "sshd", "chronyd"]}
+# "local" runs /etc/local.d/*.start after everything else in its runlevel; in
+# "boot" it brings up the USB debug console even if networking misbehaves.
+CONSOLE_SERVICES = {"boot": ["local"]}
+
+# USB serial gadget with a root shell, for when Wi-Fi/SSH don't come up. The
+# Mac sees /dev/cu.usbmodem*. pi_gadget.py unbinds it to take over the port.
+USB_CONSOLE = """#!/bin/sh
+G=/sys/kernel/config/usb_gadget/console
+modprobe libcomposite
+mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
+[ -d $G ] && exit 0
+mkdir -p $G/strings/0x409 $G/configs/c.1 $G/functions/acm.0
+echo 0x1d6b > $G/idVendor
+echo 0x0104 > $G/idProduct
+echo usbpi > $G/strings/0x409/manufacturer
+echo "usbpi console" > $G/strings/0x409/product
+ln -s $G/functions/acm.0 $G/configs/c.1/
+ls /sys/class/udc | head -n 1 > $G/UDC
+# root shell without a login prompt (busybox login refuses root on ttyGS0)
+( while :; do /sbin/getty -n -l /bin/sh -L 115200 ttyGS0 vt100; sleep 1; done ) >/dev/null 2>&1 &
+"""
 
 
 def read_wifi(path):
@@ -44,7 +65,7 @@ def wpa_quote(s):
     return f'"{s}"'
 
 
-def build(hostname, wifi, pubkey):
+def build(hostname, wifi, pubkey, console=True):
     files = {  # path -> (mode, content)
         "etc/hostname": (0o644, f"{hostname}\n"),
         "etc/hosts": (0o644, f"127.0.0.1\tlocalhost {hostname}\n::1\t\tlocalhost {hostname}\n"),
@@ -64,10 +85,18 @@ def build(hostname, wifi, pubkey):
         "etc/lbu/lbu.conf": (0o644, "LBU_MEDIA=mmcblk0p1\n"),
         "root/.ssh/authorized_keys": (0o600, pubkey.strip() + "\n"),
     }
+    services = {k: list(v) for k, v in SERVICES.items()}
+    if console:
+        files["etc/local.d/usb-console.start"] = (0o755, USB_CONSOLE)
+        dirs_extra = {"etc/local.d"}
+        for level, svcs in CONSOLE_SERVICES.items():
+            services.setdefault(level, []).extend(svcs)
+    else:
+        dirs_extra = set()
     dirs = {"etc", "etc/apk", "etc/network", "etc/wpa_supplicant", "etc/conf.d", "etc/lbu",
-            "etc/runlevels", "root", "root/.ssh"}
+            "etc/runlevels", "root", "root/.ssh"} | dirs_extra
     links = {}
-    for level, svcs in SERVICES.items():
+    for level, svcs in services.items():
         dirs.add(f"etc/runlevels/{level}")
         for s in svcs:
             links[f"etc/runlevels/{level}/{s}"] = f"/etc/init.d/{s}"
@@ -97,11 +126,12 @@ def main():
     p.add_argument("--hostname", default="usbpi")
     p.add_argument("--wifi", default=os.path.join(HERE, "wifi.local"))
     p.add_argument("--pubkey", default=os.path.expanduser("~/.ssh/id_ed25519.pub"))
+    p.add_argument("--no-console", action="store_true", help="leave out the USB serial debug console")
     a = p.parse_args()
 
     if not os.path.exists(os.path.join(a.bootfs, ".alpine-release")):
         sys.exit(f"{a.bootfs} doesn't look like an Alpine boot partition")
-    ovl = build(a.hostname, read_wifi(a.wifi), open(a.pubkey).read())
+    ovl = build(a.hostname, read_wifi(a.wifi), open(a.pubkey).read(), console=not a.no_console)
     for old in (f for f in os.listdir(a.bootfs) if f.endswith(".apkovl.tar.gz")):
         os.remove(os.path.join(a.bootfs, old))  # init uses the first one it finds
     with open(os.path.join(a.bootfs, f"{a.hostname}.apkovl.tar.gz"), "wb") as f:
