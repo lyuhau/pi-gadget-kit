@@ -3,3 +3,4 @@ __pycache__/
 *.img
 *.img.xz
 .DS_Store
+wifi.local
