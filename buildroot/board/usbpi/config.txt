@@ -1,0 +1,9 @@
+# Buildroot's config_zero2w_64bit.txt plus USB device mode.
+start_file=start.elf
+fixup_file=fixup.dat
+kernel=Image
+disable_overscan=1
+gpu_mem_512=16
+dtoverlay=miniuart-bt
+arm_64bit=1
+dtoverlay=dwc2,dr_mode=peripheral

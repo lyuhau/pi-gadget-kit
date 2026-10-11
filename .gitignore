@@ -4,3 +4,5 @@ __pycache__/
 *.img.xz
 .DS_Store
 wifi.local
+buildroot/local/
+out/

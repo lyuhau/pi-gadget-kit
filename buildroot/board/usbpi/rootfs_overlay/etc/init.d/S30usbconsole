@@ -1,0 +1,16 @@
+#!/bin/sh
+# USB serial gadget with a root shell, for when Wi-Fi/SSH don't come up.
+# The Mac sees /dev/cu.usbmodem*. pi_gadget.py unbinds it to take over the port.
+[ "$1" = start ] || exit 0
+G=/sys/kernel/config/usb_gadget/console
+modprobe libcomposite
+mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
+[ -d $G ] && exit 0
+mkdir -p $G/strings/0x409 $G/configs/c.1 $G/functions/acm.0
+echo 0x1d6b > $G/idVendor
+echo 0x0104 > $G/idProduct
+echo usbpi > $G/strings/0x409/manufacturer
+echo "usbpi console" > $G/strings/0x409/product
+ln -s $G/functions/acm.0 $G/configs/c.1/
+ls /sys/class/udc | head -n 1 > $G/UDC
+( while :; do /sbin/getty -n -l /bin/sh -L 115200 ttyGS0 vt100; sleep 1; done ) >/dev/null 2>&1 &
