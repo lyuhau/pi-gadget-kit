@@ -21,6 +21,8 @@ import sys
 
 CONFIGFS = "/sys/kernel/config/usb_gadget"
 LANG = "0x409"
+# Gadgets we unbound to free the port (e.g. the debug console); "down" rebinds them.
+DISPLACED = "/run/pi_gadget.displaced"
 
 
 class Gadget:
@@ -208,6 +210,7 @@ def cmd_up(args):
     elif not udcs:
         sys.exit("no USB device controller found: run 'sudo python3 pi_gadget.py prep' and reboot")
     else:
+        displace_others(args.name, udcs[0])
         g.write("UDC", udcs[0])
 
     print(f"\ngadget '{args.name}' {'(dry run) ' if args.dry_run else ''}"
@@ -218,6 +221,38 @@ def cmd_up(args):
         print("\nAudio from the host arrives on the Pi as an ALSA capture device:  arecord -l")
         if hid_n:
             print(f"HID reports can be sent by writing to /dev/hidg0..{hid_n - 1}")
+
+
+def displace_others(name, udc):
+    """A controller serves one gadget at a time: unbind whichever holds it."""
+    moved = []
+    for other in sorted(glob.glob(os.path.join(CONFIGFS, "*", "UDC"))):
+        other_name = os.path.basename(os.path.dirname(other))
+        if other_name != name and open(other).read().strip() == udc:
+            with open(other, "w") as f:
+                f.write("\n")
+            moved.append(f"{other_name} {udc}")
+            print(f"unbound gadget '{other_name}' from {udc} (pi_gadget.py down rebinds it)")
+    if moved:
+        with open(DISPLACED, "a") as f:
+            f.write("\n".join(moved) + "\n")
+
+
+def restore_displaced():
+    if not os.path.exists(DISPLACED):
+        return
+    for line in open(DISPLACED).read().split("\n"):
+        if not line.strip():
+            continue
+        other_name, udc = line.split()
+        path = os.path.join(CONFIGFS, other_name, "UDC")
+        try:
+            with open(path, "w") as f:
+                f.write(udc)
+            print(f"rebound gadget '{other_name}' to {udc}")
+        except OSError as e:
+            print(f"could not rebind '{other_name}': {e.strerror}")
+    os.remove(DISPLACED)
 
 
 def teardown(name):
@@ -248,6 +283,7 @@ def teardown(name):
 def cmd_down(args):
     need_root()
     print("removed" if teardown(args.name) else "no such gadget", args.name)
+    restore_displaced()
 
 
 def cmd_prep(args):
