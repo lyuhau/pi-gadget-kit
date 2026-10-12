@@ -1,14 +1,80 @@
 --- a/drivers/usb/gadget/configfs.c	2026-10-12 01:59:27
-+++ b/drivers/usb/gadget/configfs.c	2026-10-12 01:59:27
-@@ -1732,9 +1732,12 @@
++++ b/drivers/usb/gadget/configfs.c	2026-10-12 14:17:28
+@@ -59,6 +59,11 @@
+ 
+ 	spinlock_t spinlock;
+ 	bool unbind;
++	/*
++	 * Device strings that exist (and keep their IDs) but aren't referenced
++	 * from the device descriptor: bit 0 manufacturer, 1 product, 2 serial.
++	 */
++	u8 hide_strings;
+ };
+ 
+ static inline struct gadget_info *to_gadget_info(struct config_item *item)
+@@ -350,8 +355,33 @@
+ err:
+ 	mutex_unlock(&gi->lock);
+ 	return -EINVAL;
++}
++
++static ssize_t gadget_dev_desc_hide_strings_show(struct config_item *item,
++						 char *page)
++{
++	return sprintf(page, "0x%x\n", to_gadget_info(item)->hide_strings);
+ }
+ 
++static ssize_t gadget_dev_desc_hide_strings_store(struct config_item *item,
++						  const char *page, size_t len)
++{
++	struct gadget_info *gi = to_gadget_info(item);
++	u8 val;
++	int ret;
++
++	ret = kstrtou8(page, 0, &val);
++	if (ret)
++		return ret;
++	if (val & ~0x7)
++		return -EINVAL;
++
++	mutex_lock(&gi->lock);
++	gi->hide_strings = val;
++	mutex_unlock(&gi->lock);
++	return len;
++}
++
+ CONFIGFS_ATTR(gadget_dev_desc_, bDeviceClass);
+ CONFIGFS_ATTR(gadget_dev_desc_, bDeviceSubClass);
+ CONFIGFS_ATTR(gadget_dev_desc_, bDeviceProtocol);
+@@ -362,6 +392,7 @@
+ CONFIGFS_ATTR(gadget_dev_desc_, bcdUSB);
+ CONFIGFS_ATTR(gadget_dev_desc_, UDC);
+ CONFIGFS_ATTR(gadget_dev_desc_, max_speed);
++CONFIGFS_ATTR(gadget_dev_desc_, hide_strings);
+ 
+ static struct configfs_attribute *gadget_root_attrs[] = {
+ 	&gadget_dev_desc_attr_bDeviceClass,
+@@ -374,6 +405,7 @@
+ 	&gadget_dev_desc_attr_bcdUSB,
+ 	&gadget_dev_desc_attr_UDC,
+ 	&gadget_dev_desc_attr_max_speed,
++	&gadget_dev_desc_attr_hide_strings,
+ 	NULL,
+ };
+ 
+@@ -1732,9 +1764,16 @@
  			goto err_comp_cleanup;
  		}
  
 -		gi->cdev.desc.iManufacturer = s[USB_GADGET_MANUFACTURER_IDX].id;
 -		gi->cdev.desc.iProduct = s[USB_GADGET_PRODUCT_IDX].id;
 -		gi->cdev.desc.iSerialNumber = s[USB_GADGET_SERIAL_IDX].id;
-+		/* unset or empty strings get index 0 (none), like a real device without one */
-+#define GADGET_STR_ID(idx)	(s[idx].s && s[idx].s[0] ? s[idx].id : 0)
++		/*
++		 * Unset, empty or hidden strings get index 0 (none), like a real
++		 * device without one. Hidden ones still occupy their string ID.
++		 */
++#define GADGET_STR_ID(idx)	(s[idx].s && s[idx].s[0] && \
++				 !(gi->hide_strings & BIT(idx)) ? s[idx].id : 0)
 +		gi->cdev.desc.iManufacturer = GADGET_STR_ID(USB_GADGET_MANUFACTURER_IDX);
 +		gi->cdev.desc.iProduct = GADGET_STR_ID(USB_GADGET_PRODUCT_IDX);
 +		gi->cdev.desc.iSerialNumber = GADGET_STR_ID(USB_GADGET_SERIAL_IDX);

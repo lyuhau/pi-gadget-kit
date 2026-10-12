@@ -222,7 +222,33 @@ def string_refs(obj):
 
 # ---------------------------------------------------------------- capture
 
-def capture(dev, probe_strings=16):
+def seize(dev, errors):
+    """Detach the host's drivers (macOS: needs root) so class requests to the
+    audio/HID interfaces aren't refused. Returns what to reattach."""
+    detached = []
+    for cfg in dev:
+        for intf in cfg:
+            n = intf.bInterfaceNumber
+            if n in detached:
+                continue
+            try:
+                if dev.is_kernel_driver_active(n):
+                    dev.detach_kernel_driver(n)
+                    detached.append(n)
+            except (usb.core.USBError, NotImplementedError) as e:
+                errors.append(f"detach interface {n}: {e}")
+    return detached
+
+
+def release(dev, detached, errors):
+    for n in detached:
+        try:
+            dev.attach_kernel_driver(n)
+        except (usb.core.USBError, NotImplementedError) as e:
+            errors.append(f"reattach interface {n}: {e}")
+
+
+def capture(dev, probe_strings=255, grab=False):
     errors = []
     cap = {"captured_at": datetime.datetime.now().isoformat(timespec="seconds"),
            "host": f"{platform.system()} {platform.mac_ver()[0] or platform.release()}",
@@ -261,7 +287,17 @@ def capture(dev, probe_strings=16):
                 full = try_(errors, "other-speed config", get_desc, dev, DT_OTHER_SPEED, 0, u16(head, 2)) or head
                 cap["other_speed_configuration"] = {"raw": full.hex(), "descriptors": parse_config(full)}
 
-    # Strings: everything referenced, plus a probe of low indices for unreferenced ones.
+    # Every other descriptor type at index 0: anything that answers is something
+    # the device defines beyond the usual set (nothing, for most devices).
+    cap["other_descriptors"] = {}
+    for t in range(1, 256):
+        if t in (DT_DEVICE, DT_CONFIG, DT_STRING, DT_QUALIFIER, DT_OTHER_SPEED, DT_BOS):
+            continue
+        r = try_([], f"descriptor type 0x{t:02x}", get_desc, dev, t, 0, 255)
+        if r:
+            cap["other_descriptors"][f"0x{t:02x}"] = r.hex()
+
+    # Strings: every index in every language the device lists (index 0 is the list).
     cap["strings"] = {}
     s0 = try_(errors, "string 0 (language list)", get_desc, dev, DT_STRING, 0, 255)
     langids = [u16(s0, o) for o in range(2, s0[0], 2)] if s0 and len(s0) >= 4 else [0x0409]
@@ -278,9 +314,14 @@ def capture(dev, probe_strings=16):
         cap["strings"][f"0x{lang:04x}"] = table
 
     descs = cap["configurations"][0]["descriptors"] if cap["configurations"] else []
-    cap["hid_report_descriptors"] = capture_hid(dev, descs, dd, errors)
-    product = cap["strings"].get(f"0x{langids[0]:04x}", {}).get(str(dd["iProduct"]))
-    cap["uac_requests"] = capture_uac(dev, descs, errors, product)
+    detached = seize(dev, errors) if grab else []
+    cap["seized"] = bool(detached)
+    try:
+        cap["hid_report_descriptors"] = capture_hid(dev, descs, dd, errors)
+        product = cap["strings"].get(f"0x{langids[0]:04x}", {}).get(str(dd["iProduct"]))
+        cap["uac_requests"] = capture_uac(dev, descs, errors, product)
+    finally:
+        release(dev, detached, errors)
     cap["model"] = build_model(cap)
     return cap
 
@@ -400,6 +441,43 @@ def capture_uac(dev, descs, errors, product=None):
             if all(v and len(v) == 2 for v in vals):
                 out["volume"][str(fu["bUnitID"])] = {"channel": ch, "min": s16(vals[0], 0),
                                                      "max": s16(vals[1], 0), "res": s16(vals[2], 0)}
+    # Every control on every channel: current values (state) and ranges (config).
+    out["controls"] = {}
+    for fu in (u for u in units if u["name"] == "FEATURE_UNIT"):
+        idx = (fu["bUnitID"] << 8) | ac_if
+        per = {}
+        for ch, ctl in enumerate(fu["bmaControls"]):
+            got = {}
+            if ctl & (0x03 if v2 else 0x01):  # mute
+                r = try_(errors, f"unit {fu['bUnitID']} ch{ch} mute", ctrl, dev, 0xA1, 0x01 if v2 else 0x81,
+                         0x0100 | ch, idx, 1)
+                if r:
+                    got["mute"] = r[0]
+            if ctl & (0x0C if v2 else 0x02):  # volume
+                if v2:
+                    r = try_(errors, f"unit {fu['bUnitID']} ch{ch} volume", ctrl, dev, 0xA1, 0x01, 0x0200 | ch, idx, 2)
+                    if r and len(r) == 2:
+                        got["volume_cur"] = s16(r, 0)
+                else:
+                    for name, req in (("volume_cur", 0x81), ("volume_min", 0x82), ("volume_max", 0x83),
+                                      ("volume_res", 0x84)):
+                        r = try_(errors, f"unit {fu['bUnitID']} ch{ch} {name}", ctrl, dev, 0xA1, req,
+                                 0x0200 | ch, idx, 2)
+                        if r and len(r) == 2:
+                            got[name] = s16(r, 0)
+            if got:
+                per[str(ch)] = got
+        if per:
+            out["controls"][str(fu["bUnitID"])] = per
+    if not v2:  # UAC1 keeps the current sample rate on the endpoint
+        out["endpoint_rates"] = {}
+        for ep in (d for d in descs if d["name"] == "ENDPOINT" and d["transfer"] == "isochronous"
+                   and d["usage"] == "data" and d["interface"] != ac_if):
+            r = try_(errors, f"endpoint 0x{ep['bEndpointAddress']:02x} sample rate", ctrl, dev, 0xA2, 0x81,
+                     0x0100, ep["bEndpointAddress"], 3)
+            if r and len(r) == 3:
+                out["endpoint_rates"][f"0x{ep['bEndpointAddress']:02x}"] = u24(r, 0)
+
     vol_units = [u for u in units if u["name"] == "FEATURE_UNIT" and any(c & (0x0C if v2 else 0x02) for c in u["bmaControls"])]
     if product and platform.system() == "Darwin" and len(out["volume"]) < len(vol_units):
         out["coreaudio_volume"] = coreaudio_volume(product, errors)
@@ -431,7 +509,11 @@ def build_model(cap):
                                       "bDeviceSubClass", "bDeviceProtocol", "bMaxPacketSize0")},
         "speed": cap["speed"],
         "strings": {"manufacturer": s(dd["iManufacturer"]), "product": s(dd["iProduct"]),
-                    "serialnumber": s(dd["iSerialNumber"])},
+                    "serialnumber": s(dd["iSerialNumber"]),
+                    "langids": cap.get("langids"),
+                    # every string the device answers, referenced or not
+                    "table": {k: v for k, v in sorted(strings.items(), key=lambda kv: int(kv[0]))},
+                    "referenced": sorted(string_refs({k: v for k, v in cap.items() if k != "model"}))},
         "config": {"bmAttributes": cfg.get("bmAttributes"), "configuration": s(cfg.get("iConfiguration")),
                    "max_power_ma": cfg.get("bMaxPower", 0) * (8 if super_speed else 2)},
         "functions": [],
@@ -611,14 +693,15 @@ def cmd_capture(args):
             kw["idProduct"] = args.pid
         if not kw:
             sys.exit("give --vid/--pid or --wait (see: capture_usb.py list)")
-        devs = list(usb.core.find(find_all=True, backend=be, **kw))
+        devs = [d for d in usb.core.find(find_all=True, backend=be, **kw)
+                if args.bus is None or d.bus == args.bus]
         if not devs:
             sys.exit("no matching device")
 
     caps = []
     for dev in devs:
         print("capturing", describe(dev))
-        caps.append(capture(dev, args.probe_strings))
+        caps.append(capture(dev, args.probe_strings, args.seize))
     with open(args.output, "w") as f:
         json.dump({"tool": "capture_usb.py", "devices": caps}, f, indent=2)
     print(f"wrote {args.output}\n")
@@ -724,8 +807,12 @@ def main():
     c = sub.add_parser("capture", help="capture a device to JSON")
     c.add_argument("--vid", type=lambda x: int(x, 0))
     c.add_argument("--pid", type=lambda x: int(x, 0))
+    c.add_argument("--bus", type=int, help="only devices on this bus (to tell identical devices apart)")
     c.add_argument("--wait", action="store_true", help="wait for a newly plugged device")
-    c.add_argument("--probe-strings", type=int, default=16, help="also probe string indices 1..N (default 16)")
+    c.add_argument("--probe-strings", type=int, default=255, help="probe string indices 1..N (default: all 255)")
+    c.add_argument("--seize", action="store_true",
+                   help="detach the host's drivers during class requests (macOS: run with sudo); "
+                        "audio stops briefly")
     c.add_argument("-o", "--output", default="capture.json")
     c.set_defaults(fn=cmd_capture)
     s = sub.add_parser("show", help="summarize a capture")

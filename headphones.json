@@ -2,22 +2,14 @@
   "tool": "capture_usb.py",
   "devices": [
     {
-      "captured_at": "2026-10-11T16:25:10",
+      "captured_at": "2026-10-12T15:13:17",
       "host": "Darwin 26.2",
       "bus": 1,
-      "address": 1,
+      "address": 2,
       "speed": "full-speed",
       "errors": [
         "device qualifier (normal for full-speed-only devices): [Errno 32] Pipe error",
-        "HID report descriptor if3: [Errno 13] Access denied (insufficient permissions)",
-        "HID report descriptor if4: [Errno 13] Access denied (insufficient permissions)",
-        "HID report descriptor if5: [Errno 13] Access denied (insufficient permissions)",
-        "feature unit 34 volume range: [Errno 13] Access denied (insufficient permissions)",
-        "feature unit 34 volume range: [Errno 13] Access denied (insufficient permissions)",
-        "feature unit 34 volume range: [Errno 13] Access denied (insufficient permissions)",
-        "feature unit 40 volume range: [Errno 13] Access denied (insufficient permissions)",
-        "feature unit 40 volume range: [Errno 13] Access denied (insufficient permissions)",
-        "feature unit 40 volume range: [Errno 13] Access denied (insufficient permissions)"
+        "reattach interface 0: [Errno 2] Entity not found"
       ],
       "device_descriptor": {
         "raw": "120100020000004038100a23100101020001",
@@ -476,6 +468,7 @@
           ]
         }
       ],
+      "other_descriptors": {},
       "strings": {
         "0x0409": {
           "1": "SteelSeries",
@@ -488,34 +481,60 @@
       "langids": [
         1033
       ],
+      "seized": true,
       "hid_report_descriptors": {
         "3": {
           "raw": "06c0ff0901a10106c1ff150026ff00750809f09540810209f19540910209f2960202b102c0",
-          "source": "ioreg"
+          "source": "device"
         },
         "4": {
           "raw": "050c0901a10109e909ea750195021500250181027506950181039503750109b609cd09b58102751595018103c0",
-          "source": "ioreg"
+          "source": "device"
         },
         "5": {
           "raw": "0600ff0901a1010601ff150026ff00750809f09540810209f195409102c0",
-          "source": "ioreg"
+          "source": "device"
         }
       },
       "uac_requests": {
         "clocks": {},
-        "volume": {},
-        "coreaudio_volume": {
-          "output": {
-            "min_db": -77.0,
-            "max_db": 0.0,
-            "element": 0
+        "volume": {
+          "34": {
+            "channel": 0,
+            "min": -19712,
+            "max": 0,
+            "res": 1
           },
-          "input": {
-            "min_db": -83.0,
-            "max_db": 0.0,
-            "element": 0
+          "40": {
+            "channel": 0,
+            "min": -21248,
+            "max": 0,
+            "res": 1
           }
+        },
+        "controls": {
+          "34": {
+            "0": {
+              "mute": 0,
+              "volume_cur": -6674,
+              "volume_min": -19712,
+              "volume_max": 0,
+              "volume_res": 1
+            }
+          },
+          "40": {
+            "0": {
+              "mute": 0,
+              "volume_cur": 0,
+              "volume_min": -21248,
+              "volume_max": 0,
+              "volume_res": 1
+            }
+          }
+        },
+        "endpoint_rates": {
+          "0x03": 16711681,
+          "0x83": 16711681
         }
       },
       "model": {
@@ -533,7 +552,21 @@
         "strings": {
           "manufacturer": "SteelSeries",
           "product": "Arctis GameBuds",
-          "serialnumber": null
+          "serialnumber": null,
+          "langids": [
+            1033
+          ],
+          "table": {
+            "1": "SteelSeries",
+            "2": "Arctis GameBuds",
+            "3": "0123456789A",
+            "4": "Arctis GameBuds",
+            "5": "RTL8763EAU - Game"
+          },
+          "referenced": [
+            1,
+            2
+          ]
         },
         "config": {
           "bmAttributes": 128,
@@ -573,10 +606,11 @@
               "usb_terminal_id": 38,
               "mute": true,
               "volume": {
+                "channel": 0,
                 "min": -19712,
                 "max": 0,
-                "res": null,
-                "source": "coreaudio"
+                "res": 1,
+                "source": "device"
               },
               "fu_name": null,
               "fu_id": 34,
@@ -610,10 +644,11 @@
               "usb_terminal_id": 39,
               "mute": true,
               "volume": {
+                "channel": 0,
                 "min": -21248,
                 "max": 0,
-                "res": null,
-                "source": "coreaudio"
+                "res": 1,
+                "source": "device"
               },
               "fu_name": null,
               "fu_id": 40,
@@ -663,7 +698,10 @@
             "report_desc": "0600ff0901a1010601ff150026ff00750809f09540810209f195409102c0"
           }
         ]
-      }
+      },
+      "redacted": [
+        "string 33 (0x0409): unreferenced per-unit identifier"
+      ]
     }
   ]
 }

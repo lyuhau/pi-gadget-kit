@@ -37,6 +37,7 @@ teardown_all() {
 			for s in "$c"strings/*/; do [ -d "$s" ] && rmdir "$s"; done
 			rmdir "$c"
 		done
+		for d in "$g"strings/*/*/; do [ -d "$d" ] && rmdir "$d"; done  # custom strings
 		for d in "$g"functions/*/ "$g"strings/*/; do [ -d "$d" ] && rmdir "$d"; done
 		rmdir "$g"
 		echo "removed gadget $(basename "$g")"

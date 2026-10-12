@@ -1,5 +1,5 @@
 --- a/drivers/usb/gadget/function/f_uac1.c	2026-10-11 18:17:51
-+++ b/drivers/usb/gadget/function/f_uac1.c	2026-10-12 02:03:02
++++ b/drivers/usb/gadget/function/f_uac1.c	2026-10-12 14:17:28
 @@ -16,6 +16,7 @@
  
  #include <linux/usb/audio.h>
@@ -158,10 +158,10 @@
 +	if (opts->p_hs_bint < 1 || opts->p_hs_bint > 4 ||
 +	    opts->c_hs_bint < 1 || opts->c_hs_bint > 4) {
 +		dev_err(dev, "Error: hs_bint must be 1..4\n");
- 		return -EINVAL;
++		return -EINVAL;
 +	} else if (opts->p_max_packet_size > 1023 || opts->c_max_packet_size > 1023) {
 +		dev_err(dev, "Error: max_packet_size must be at most 1023\n");
-+		return -EINVAL;
+ 		return -EINVAL;
 +	} else if (opts->p_ep_num > 15 || opts->c_ep_num > 15) {
 +		dev_err(dev, "Error: ep_num must be 0..15\n");
 +		return -EINVAL;
@@ -214,7 +214,7 @@
  /* audio function driver setup/binding */
  static int f_audio_bind(struct usb_configuration *c, struct usb_function *f)
  {
-@@ -1255,15 +1362,15 @@
+@@ -1255,64 +1362,82 @@
  	strings_uac1[STR_USB_OUT_IT_CH_NAMES].s = audio_opts->c_it_ch_name;
  	strings_uac1[STR_IO_OUT_OT].s = audio_opts->c_ot_name;
  	strings_uac1[STR_FU_OUT].s = audio_opts->c_fu_vol_name;
@@ -232,9 +232,28 @@
 +	strings_uac1[STR_AS_IN_IF_ALT0].s = audio_opts->p_alt0_name;
 +	strings_uac1[STR_AS_IN_IF_ALT1].s = audio_opts->p_alt1_name;
  
- 	us = usb_gstrings_attach(cdev, uac1_strings, ARRAY_SIZE(strings_uac1));
- 	if (IS_ERR(us))
-@@ -1274,45 +1381,50 @@
+-	us = usb_gstrings_attach(cdev, uac1_strings, ARRAY_SIZE(strings_uac1));
+-	if (IS_ERR(us))
+-		return PTR_ERR(us);
++	/*
++	 * With every name empty, don't claim string IDs at all: a device with
++	 * no strings answers higher indices with a stall, not empty strings.
++	 */
++	for (i = 0; i < NUM_STR_DESCRIPTORS; i++)
++		if (strings_uac1[i].s[0])
++			break;
++	if (i < NUM_STR_DESCRIPTORS) {
++		us = usb_gstrings_attach(cdev, uac1_strings, ARRAY_SIZE(strings_uac1));
++		if (IS_ERR(us))
++			return PTR_ERR(us);
++	} else {
++		static struct usb_string no_strings[NUM_STR_DESCRIPTORS];
+ 
++		us = no_strings;	/* every UAC1_STR_ID() below is 0 */
++	}
++
+ 	ac_header_desc = build_ac_header_desc(audio_opts);
+ 	if (!ac_header_desc)
  		return -ENOMEM;
  
  	if (FUOUT_EN(audio_opts)) {
@@ -300,7 +319,7 @@
  	}
  
  	/* Set channel numbers */
-@@ -1328,24 +1440,28 @@
+@@ -1328,24 +1453,28 @@
  	as_in_type_i_desc.bBitResolution = audio_opts->p_ssize * 8;
  
  	if (FUOUT_EN(audio_opts)) {
@@ -333,7 +352,7 @@
  	}
  
  	/* Set sample rates */
-@@ -1408,7 +1524,9 @@
+@@ -1408,7 +1537,9 @@
  	ac_interface_desc.bNumEndpoints = 0;
  
  	/* allocate AC interrupt endpoint */
@@ -344,7 +363,7 @@
  		ep = usb_ep_autoconfig(cdev->gadget, &ac_int_ep_desc);
  		if (!ep)
  			goto err_free_fu;
-@@ -1418,20 +1536,42 @@
+@@ -1418,20 +1549,42 @@
  		ac_interface_desc.bNumEndpoints = 1;
  	}
  
@@ -389,7 +408,7 @@
  		ss_as_in_ep_desc.bEndpointAddress = as_in_ep_desc.bEndpointAddress;
  		audio->in_ep = ep;
  		audio->in_ep->desc = &as_in_ep_desc;
-@@ -1440,7 +1580,7 @@
+@@ -1440,7 +1593,7 @@
  	setup_descriptor(audio_opts);
  
  	/* copy descriptors, and track endpoint copies */
@@ -398,7 +417,7 @@
  					f_audio_ss_desc);
  	if (status)
  		goto err_free_fu;
-@@ -1652,8 +1792,16 @@
+@@ -1652,8 +1805,16 @@
  		goto end;						\
  	}								\
  									\
@@ -416,7 +435,7 @@
  									\
  end:									\
  	mutex_unlock(&opts->lock);					\
-@@ -1694,6 +1842,28 @@
+@@ -1694,6 +1855,28 @@
  UAC1_ATTRIBUTE_STRING(c_ot_name);
  UAC1_ATTRIBUTE_STRING(c_fu_vol_name);
  
@@ -445,7 +464,7 @@
  static struct configfs_attribute *f_uac1_attrs[] = {
  	&f_uac1_opts_attr_c_chmask,
  	&f_uac1_opts_attr_c_srate,
-@@ -1727,6 +1897,28 @@
+@@ -1727,6 +1910,28 @@
  	&f_uac1_opts_attr_c_ot_name,
  	&f_uac1_opts_attr_c_fu_vol_name,
  
@@ -474,7 +493,7 @@
  	NULL,
  };
  
-@@ -1791,6 +1983,18 @@
+@@ -1791,6 +1996,18 @@
  	scnprintf(opts->c_ot_name, sizeof(opts->c_ot_name), "Playback Output terminal");
  	scnprintf(opts->c_fu_vol_name, sizeof(opts->c_fu_vol_name), "Playback Volume");
  

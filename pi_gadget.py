@@ -171,6 +171,37 @@ def setup_audio(g, fn, inst, speed, descs):
             g.skipped.append(f"{key}: only the first of {len(st['alts'])} alternate formats is reproduced")
 
 
+def setup_string_table(g, strings, dd):
+    """Reproduce the device's string indices, including strings it has but
+    never references. The gadget numbers strings in order: 1 manufacturer,
+    2 product, 3 serial, then custom strings (strings/<lang>/<name>/), so a
+    contiguous run 1..N can be matched; alpine-module/patches/0003's
+    hide_strings keeps an existing slot 1-3 out of the device descriptor."""
+    table = {int(k): v for k, v in strings["table"].items()}
+    slots = (("manufacturer", 1, "iManufacturer"), ("product", 2, "iProduct"),
+             ("serialnumber", 3, "iSerialNumber"))
+    hide = 0
+    for bit, (key, idx, field) in enumerate(slots):
+        if idx in table:
+            g.write(f"strings/{LANG}/{key}", table[idx] or "\n")
+            if dd[field] != idx:
+                hide |= 1 << bit  # present at idx, but not what the descriptor points to
+        if dd[field] not in (0, idx):
+            g.skipped.append(f"{field} is {dd[field]}; the gadget can only use {idx} or none")
+    g.write("hide_strings", hide)
+
+    idx = 4
+    while idx in table:
+        g.mkdir(f"strings/{LANG}/s{idx}")
+        g.write(f"strings/{LANG}/s{idx}/s", table[idx])
+        idx += 1
+    rest = sorted(i for i in table if i >= idx)
+    if rest:
+        g.skipped.append(f"strings {rest} not reproduced: custom strings only fill indices 4..N without gaps")
+    if len(strings.get("langids") or []) > 1:
+        g.skipped.append(f"only {LANG} strings are reproduced, not {strings['langids']}")
+
+
 def setup_hid(g, fn, inst):
     base = f"functions/{inst}"
     if not fn["report_desc"]:
@@ -229,9 +260,12 @@ def cmd_up(args):
         g.write("max_speed", speed, optional=True)
 
     g.mkdir(f"strings/{LANG}")
-    for key in ("manufacturer", "product", "serialnumber"):
-        if m["strings"][key]:
-            g.write(f"strings/{LANG}/{key}", m["strings"][key])
+    if g.has("hide_strings") and "table" in m["strings"]:
+        setup_string_table(g, m["strings"], cap["device_descriptor"])
+    else:
+        for key in ("manufacturer", "product", "serialnumber"):
+            if m["strings"][key]:
+                g.write(f"strings/{LANG}/{key}", m["strings"][key])
 
     g.mkdir("configs/c.1")
     if m["config"]["bmAttributes"] is not None:
@@ -327,6 +361,8 @@ def teardown(name):
     for fn in glob.glob(os.path.join(g, "functions", "*")):
         os.rmdir(fn)
     for s in glob.glob(os.path.join(g, "strings", "*")):
+        for custom in glob.glob(os.path.join(s, "*", "")):  # custom strings (directories)
+            os.rmdir(custom)
         os.rmdir(s)
     os.rmdir(g)
     return True
