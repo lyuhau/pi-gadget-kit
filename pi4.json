@@ -2,24 +2,24 @@
   "tool": "capture_usb.py",
   "devices": [
     {
-      "captured_at": "2026-10-11T18:24:59",
+      "captured_at": "2026-10-12T02:05:28",
       "host": "Darwin 26.2",
       "bus": 0,
-      "address": 2,
+      "address": 1,
       "speed": "full-speed",
       "errors": [
         "HID report descriptor if3: [Errno 13] Access denied (insufficient permissions)",
         "HID report descriptor if4: [Errno 13] Access denied (insufficient permissions)",
         "HID report descriptor if5: [Errno 13] Access denied (insufficient permissions)",
-        "feature unit 5 volume range: [Errno 13] Access denied (insufficient permissions)",
-        "feature unit 5 volume range: [Errno 13] Access denied (insufficient permissions)",
-        "feature unit 5 volume range: [Errno 13] Access denied (insufficient permissions)",
-        "feature unit 6 volume range: [Errno 13] Access denied (insufficient permissions)",
-        "feature unit 6 volume range: [Errno 13] Access denied (insufficient permissions)",
-        "feature unit 6 volume range: [Errno 13] Access denied (insufficient permissions)"
+        "feature unit 34 volume range: [Errno 13] Access denied (insufficient permissions)",
+        "feature unit 34 volume range: [Errno 13] Access denied (insufficient permissions)",
+        "feature unit 34 volume range: [Errno 13] Access denied (insufficient permissions)",
+        "feature unit 40 volume range: [Errno 13] Access denied (insufficient permissions)",
+        "feature unit 40 volume range: [Errno 13] Access denied (insufficient permissions)",
+        "feature unit 40 volume range: [Errno 13] Access denied (insufficient permissions)"
       ],
       "device_descriptor": {
-        "raw": "120100020000004038100a23100101020301",
+        "raw": "120100020000004038100a23100101020001",
         "bcdUSB": 512,
         "bDeviceClass": 0,
         "bDeviceSubClass": 0,
@@ -30,18 +30,18 @@
         "bcdDevice": 272,
         "iManufacturer": 1,
         "iProduct": 2,
-        "iSerialNumber": 3,
+        "iSerialNumber": 0,
         "bNumConfigurations": 1
       },
       "configurations": [
         {
           "index": 0,
-          "raw": "0902110106010080320904000000010100000a240100014c000201020c24020101010002030000000924030302030005000d2406050102030000000000000c24020202040001010000000924030401010006000b24060602020300000000090401000001020000090401010101020000072401010101000b2402010202100180bb0009050309c00001000007250101010100090402000001020000090402010101020000072401040101000b2402010102100180bb000905830560000100000725010100000009040300010300001209210101000122250007058103400001090404000103000014092101010001222d0007058203040001090405000103000016092101010001221e0007058403400001",
+          "raw": "09020c0106010080320904000000010100000a2401000147000201020c24022601010002030000000924032402030022000a2406222601030000000c2402230204000101000000092403270101002800092406282301030000090401000001020000090401010101020000072401260101000b2402010202100180bb0009050309c00001000007250101010100090402000001020000090402010101020000072401270101000b2402010102100180bb000905830560000100000725010100000009040300010300000009211001000122250007058103400001090404000103000000092110010001222d0007058203040001090405000103000000092110010001221e0007058403400001",
           "descriptors": [
             {
               "bDescriptorType": 2,
               "name": "CONFIGURATION",
-              "wTotalLength": 273,
+              "wTotalLength": 268,
               "bNumInterfaces": 6,
               "bConfigurationValue": 1,
               "iConfiguration": 0,
@@ -49,7 +49,7 @@
               "bMaxPower": 50,
               "interface": null,
               "alt": null,
-              "raw": "090211010601008032"
+              "raw": "09020c010601008032"
             },
             {
               "bDescriptorType": 4,
@@ -70,20 +70,20 @@
               "subtype": 1,
               "name": "AC_HEADER",
               "bcdADC": 256,
-              "wTotalLength": 76,
+              "wTotalLength": 71,
               "baInterfaceNr": [
                 1,
                 2
               ],
               "interface": 0,
               "alt": 0,
-              "raw": "0a240100014c00020102"
+              "raw": "0a240100014700020102"
             },
             {
               "bDescriptorType": 36,
               "subtype": 2,
               "name": "INPUT_TERMINAL",
-              "bTerminalID": 1,
+              "bTerminalID": 38,
               "wTerminalType": 257,
               "bAssocTerminal": 0,
               "bNrChannels": 2,
@@ -92,28 +92,28 @@
               "iTerminal": 0,
               "interface": 0,
               "alt": 0,
-              "raw": "0c2402010101000203000000"
+              "raw": "0c2402260101000203000000"
             },
             {
               "bDescriptorType": 36,
               "subtype": 3,
               "name": "OUTPUT_TERMINAL",
-              "bTerminalID": 3,
+              "bTerminalID": 36,
               "wTerminalType": 770,
               "bAssocTerminal": 0,
-              "bSourceID": 5,
+              "bSourceID": 34,
               "iTerminal": 0,
               "interface": 0,
               "alt": 0,
-              "raw": "092403030203000500"
+              "raw": "092403240203002200"
             },
             {
               "bDescriptorType": 36,
               "subtype": 6,
               "name": "FEATURE_UNIT",
-              "bUnitID": 5,
-              "bSourceID": 1,
-              "bControlSize": 2,
+              "bUnitID": 34,
+              "bSourceID": 38,
+              "bControlSize": 1,
               "bmaControls": [
                 3,
                 0,
@@ -122,13 +122,13 @@
               "iFeature": 0,
               "interface": 0,
               "alt": 0,
-              "raw": "0d240605010203000000000000"
+              "raw": "0a240622260103000000"
             },
             {
               "bDescriptorType": 36,
               "subtype": 2,
               "name": "INPUT_TERMINAL",
-              "bTerminalID": 2,
+              "bTerminalID": 35,
               "wTerminalType": 1026,
               "bAssocTerminal": 0,
               "bNrChannels": 1,
@@ -137,28 +137,28 @@
               "iTerminal": 0,
               "interface": 0,
               "alt": 0,
-              "raw": "0c2402020204000101000000"
+              "raw": "0c2402230204000101000000"
             },
             {
               "bDescriptorType": 36,
               "subtype": 3,
               "name": "OUTPUT_TERMINAL",
-              "bTerminalID": 4,
+              "bTerminalID": 39,
               "wTerminalType": 257,
               "bAssocTerminal": 0,
-              "bSourceID": 6,
+              "bSourceID": 40,
               "iTerminal": 0,
               "interface": 0,
               "alt": 0,
-              "raw": "092403040101000600"
+              "raw": "092403270101002800"
             },
             {
               "bDescriptorType": 36,
               "subtype": 6,
               "name": "FEATURE_UNIT",
-              "bUnitID": 6,
-              "bSourceID": 2,
-              "bControlSize": 2,
+              "bUnitID": 40,
+              "bSourceID": 35,
+              "bControlSize": 1,
               "bmaControls": [
                 3,
                 0
@@ -166,7 +166,7 @@
               "iFeature": 0,
               "interface": 0,
               "alt": 0,
-              "raw": "0b24060602020300000000"
+              "raw": "092406282301030000"
             },
             {
               "bDescriptorType": 4,
@@ -200,12 +200,12 @@
               "bDescriptorType": 36,
               "subtype": 1,
               "name": "AS_GENERAL",
-              "bTerminalLink": 1,
+              "bTerminalLink": 38,
               "bDelay": 1,
               "wFormatTag": 1,
               "interface": 1,
               "alt": 1,
-              "raw": "07240101010100"
+              "raw": "07240126010100"
             },
             {
               "bDescriptorType": 36,
@@ -283,12 +283,12 @@
               "bDescriptorType": 36,
               "subtype": 1,
               "name": "AS_GENERAL",
-              "bTerminalLink": 4,
+              "bTerminalLink": 39,
               "bDelay": 1,
               "wFormatTag": 1,
               "interface": 2,
               "alt": 1,
-              "raw": "07240104010100"
+              "raw": "07240127010100"
             },
             {
               "bDescriptorType": 36,
@@ -343,15 +343,15 @@
               "bInterfaceClass": 3,
               "bInterfaceSubClass": 0,
               "bInterfaceProtocol": 0,
-              "iInterface": 18,
+              "iInterface": 0,
               "interface": 3,
               "alt": 0,
-              "raw": "090403000103000012"
+              "raw": "090403000103000000"
             },
             {
               "bDescriptorType": 33,
               "name": "HID",
-              "bcdHID": 257,
+              "bcdHID": 272,
               "bCountryCode": 0,
               "bNumDescriptors": 1,
               "descriptors": [
@@ -362,7 +362,7 @@
               ],
               "interface": 3,
               "alt": 0,
-              "raw": "092101010001222500"
+              "raw": "092110010001222500"
             },
             {
               "bDescriptorType": 5,
@@ -389,15 +389,15 @@
               "bInterfaceClass": 3,
               "bInterfaceSubClass": 0,
               "bInterfaceProtocol": 0,
-              "iInterface": 20,
+              "iInterface": 0,
               "interface": 4,
               "alt": 0,
-              "raw": "090404000103000014"
+              "raw": "090404000103000000"
             },
             {
               "bDescriptorType": 33,
               "name": "HID",
-              "bcdHID": 257,
+              "bcdHID": 272,
               "bCountryCode": 0,
               "bNumDescriptors": 1,
               "descriptors": [
@@ -408,7 +408,7 @@
               ],
               "interface": 4,
               "alt": 0,
-              "raw": "092101010001222d00"
+              "raw": "092110010001222d00"
             },
             {
               "bDescriptorType": 5,
@@ -435,15 +435,15 @@
               "bInterfaceClass": 3,
               "bInterfaceSubClass": 0,
               "bInterfaceProtocol": 0,
-              "iInterface": 22,
+              "iInterface": 0,
               "interface": 5,
               "alt": 0,
-              "raw": "090405000103000016"
+              "raw": "090405000103000000"
             },
             {
               "bDescriptorType": 33,
               "name": "HID",
-              "bcdHID": 257,
+              "bcdHID": 272,
               "bCountryCode": 0,
               "bNumDescriptors": 1,
               "descriptors": [
@@ -454,7 +454,7 @@
               ],
               "interface": 5,
               "alt": 0,
-              "raw": "092101010001221e00"
+              "raw": "092110010001221e00"
             },
             {
               "bDescriptorType": 5,
@@ -479,14 +479,14 @@
         "raw": "0a060002000000400100"
       },
       "other_speed_configuration": {
-        "raw": "0907110106010080320904000000010100000a240100014c000201020c24020101010002030000000924030302030005000d2406050102030000000000000c24020202040001010000000924030401010006000b24060602020300000000090401000001020000090401010101020000072401010101000b2402010202100180bb0009050309c00004000007250101010100090402000001020000090402010101020000072401040101000b2402010102100180bb000905830560000400000725010100000009040300010300001209210101000122250007058103400001090404000103000014092101010001222d0007058203040001090405000103000016092101010001221e0007058403400001",
+        "raw": "09070c0106010080320904000000010100000a2401000147000201020c24022601010002030000000924032402030022000a2406222601030000000c2402230204000101000000092403270101002800092406282301030000090401000001020000090401010101020000072401260101000b2402010202100180bb0009050309c00004000007250101010100090402000001020000090402010101020000072401270101000b2402010102100180bb000905830560000400000725010100000009040300010300000009211001000122250007058103400001090404000103000000092110010001222d0007058203040001090405000103000000092110010001221e0007058403400001",
         "descriptors": [
           {
             "bDescriptorType": 7,
             "name": "UNKNOWN_0x07",
             "interface": null,
             "alt": null,
-            "raw": "090711010601008032"
+            "raw": "09070c010601008032"
           },
           {
             "bDescriptorType": 4,
@@ -507,20 +507,20 @@
             "subtype": 1,
             "name": "AC_HEADER",
             "bcdADC": 256,
-            "wTotalLength": 76,
+            "wTotalLength": 71,
             "baInterfaceNr": [
               1,
               2
             ],
             "interface": 0,
             "alt": 0,
-            "raw": "0a240100014c00020102"
+            "raw": "0a240100014700020102"
           },
           {
             "bDescriptorType": 36,
             "subtype": 2,
             "name": "INPUT_TERMINAL",
-            "bTerminalID": 1,
+            "bTerminalID": 38,
             "wTerminalType": 257,
             "bAssocTerminal": 0,
             "bNrChannels": 2,
@@ -529,28 +529,28 @@
             "iTerminal": 0,
             "interface": 0,
             "alt": 0,
-            "raw": "0c2402010101000203000000"
+            "raw": "0c2402260101000203000000"
           },
           {
             "bDescriptorType": 36,
             "subtype": 3,
             "name": "OUTPUT_TERMINAL",
-            "bTerminalID": 3,
+            "bTerminalID": 36,
             "wTerminalType": 770,
             "bAssocTerminal": 0,
-            "bSourceID": 5,
+            "bSourceID": 34,
             "iTerminal": 0,
             "interface": 0,
             "alt": 0,
-            "raw": "092403030203000500"
+            "raw": "092403240203002200"
           },
           {
             "bDescriptorType": 36,
             "subtype": 6,
             "name": "FEATURE_UNIT",
-            "bUnitID": 5,
-            "bSourceID": 1,
-            "bControlSize": 2,
+            "bUnitID": 34,
+            "bSourceID": 38,
+            "bControlSize": 1,
             "bmaControls": [
               3,
               0,
@@ -559,13 +559,13 @@
             "iFeature": 0,
             "interface": 0,
             "alt": 0,
-            "raw": "0d240605010203000000000000"
+            "raw": "0a240622260103000000"
           },
           {
             "bDescriptorType": 36,
             "subtype": 2,
             "name": "INPUT_TERMINAL",
-            "bTerminalID": 2,
+            "bTerminalID": 35,
             "wTerminalType": 1026,
             "bAssocTerminal": 0,
             "bNrChannels": 1,
@@ -574,28 +574,28 @@
             "iTerminal": 0,
             "interface": 0,
             "alt": 0,
-            "raw": "0c2402020204000101000000"
+            "raw": "0c2402230204000101000000"
           },
           {
             "bDescriptorType": 36,
             "subtype": 3,
             "name": "OUTPUT_TERMINAL",
-            "bTerminalID": 4,
+            "bTerminalID": 39,
             "wTerminalType": 257,
             "bAssocTerminal": 0,
-            "bSourceID": 6,
+            "bSourceID": 40,
             "iTerminal": 0,
             "interface": 0,
             "alt": 0,
-            "raw": "092403040101000600"
+            "raw": "092403270101002800"
           },
           {
             "bDescriptorType": 36,
             "subtype": 6,
             "name": "FEATURE_UNIT",
-            "bUnitID": 6,
-            "bSourceID": 2,
-            "bControlSize": 2,
+            "bUnitID": 40,
+            "bSourceID": 35,
+            "bControlSize": 1,
             "bmaControls": [
               3,
               0
@@ -603,7 +603,7 @@
             "iFeature": 0,
             "interface": 0,
             "alt": 0,
-            "raw": "0b24060602020300000000"
+            "raw": "092406282301030000"
           },
           {
             "bDescriptorType": 4,
@@ -637,12 +637,12 @@
             "bDescriptorType": 36,
             "subtype": 1,
             "name": "AS_GENERAL",
-            "bTerminalLink": 1,
+            "bTerminalLink": 38,
             "bDelay": 1,
             "wFormatTag": 1,
             "interface": 1,
             "alt": 1,
-            "raw": "07240101010100"
+            "raw": "07240126010100"
           },
           {
             "bDescriptorType": 36,
@@ -720,12 +720,12 @@
             "bDescriptorType": 36,
             "subtype": 1,
             "name": "AS_GENERAL",
-            "bTerminalLink": 4,
+            "bTerminalLink": 39,
             "bDelay": 1,
             "wFormatTag": 1,
             "interface": 2,
             "alt": 1,
-            "raw": "07240104010100"
+            "raw": "07240127010100"
           },
           {
             "bDescriptorType": 36,
@@ -780,15 +780,15 @@
             "bInterfaceClass": 3,
             "bInterfaceSubClass": 0,
             "bInterfaceProtocol": 0,
-            "iInterface": 18,
+            "iInterface": 0,
             "interface": 3,
             "alt": 0,
-            "raw": "090403000103000012"
+            "raw": "090403000103000000"
           },
           {
             "bDescriptorType": 33,
             "name": "HID",
-            "bcdHID": 257,
+            "bcdHID": 272,
             "bCountryCode": 0,
             "bNumDescriptors": 1,
             "descriptors": [
@@ -799,7 +799,7 @@
             ],
             "interface": 3,
             "alt": 0,
-            "raw": "092101010001222500"
+            "raw": "092110010001222500"
           },
           {
             "bDescriptorType": 5,
@@ -826,15 +826,15 @@
             "bInterfaceClass": 3,
             "bInterfaceSubClass": 0,
             "bInterfaceProtocol": 0,
-            "iInterface": 20,
+            "iInterface": 0,
             "interface": 4,
             "alt": 0,
-            "raw": "090404000103000014"
+            "raw": "090404000103000000"
           },
           {
             "bDescriptorType": 33,
             "name": "HID",
-            "bcdHID": 257,
+            "bcdHID": 272,
             "bCountryCode": 0,
             "bNumDescriptors": 1,
             "descriptors": [
@@ -845,7 +845,7 @@
             ],
             "interface": 4,
             "alt": 0,
-            "raw": "092101010001222d00"
+            "raw": "092110010001222d00"
           },
           {
             "bDescriptorType": 5,
@@ -872,15 +872,15 @@
             "bInterfaceClass": 3,
             "bInterfaceSubClass": 0,
             "bInterfaceProtocol": 0,
-            "iInterface": 22,
+            "iInterface": 0,
             "interface": 5,
             "alt": 0,
-            "raw": "090405000103000016"
+            "raw": "090405000103000000"
           },
           {
             "bDescriptorType": 33,
             "name": "HID",
-            "bcdHID": 257,
+            "bcdHID": 272,
             "bCountryCode": 0,
             "bNumDescriptors": 1,
             "descriptors": [
@@ -891,7 +891,7 @@
             ],
             "interface": 5,
             "alt": 0,
-            "raw": "092101010001221e00"
+            "raw": "092110010001221e00"
           },
           {
             "bDescriptorType": 5,
@@ -928,10 +928,7 @@
           "13": "",
           "14": "",
           "15": "",
-          "16": "",
-          "18": "HID Interface",
-          "20": "HID Interface",
-          "22": "HID Interface"
+          "16": ""
         }
       },
       "langids": [
@@ -982,7 +979,7 @@
         "strings": {
           "manufacturer": "SteelSeries",
           "product": "Arctis GameBuds",
-          "serialnumber": ""
+          "serialnumber": null
         },
         "config": {
           "bmAttributes": 128,
@@ -999,7 +996,7 @@
               "alts": [
                 {
                   "alt": 1,
-                  "terminal_link": 1,
+                  "terminal_link": 38,
                   "channels": 2,
                   "chmask": 3,
                   "subslot_bytes": 2,
@@ -1018,6 +1015,8 @@
               "terminal_type_name": "headphones",
               "terminal_name": null,
               "usb_terminal_name": null,
+              "terminal_id": 36,
+              "usb_terminal_id": 38,
               "mute": true,
               "volume": {
                 "min": -19712,
@@ -1025,14 +1024,16 @@
                 "res": null,
                 "source": "coreaudio"
               },
-              "fu_name": null
+              "fu_name": null,
+              "fu_id": 34,
+              "fu_control_size": 1
             },
             "device_to_host": {
               "interface": 2,
               "alts": [
                 {
                   "alt": 1,
-                  "terminal_link": 4,
+                  "terminal_link": 39,
                   "channels": 1,
                   "chmask": 1,
                   "subslot_bytes": 2,
@@ -1051,6 +1052,8 @@
               "terminal_type_name": "headset",
               "terminal_name": null,
               "usb_terminal_name": null,
+              "terminal_id": 35,
+              "usb_terminal_id": 39,
               "mute": true,
               "volume": {
                 "min": -21248,
@@ -1058,7 +1061,9 @@
                 "res": null,
                 "source": "coreaudio"
               },
-              "fu_name": null
+              "fu_name": null,
+              "fu_id": 40,
+              "fu_control_size": 1
             }
           },
           {
@@ -1066,7 +1071,10 @@
             "interface": 3,
             "subclass": 0,
             "protocol": 0,
-            "name": "HID Interface",
+            "name": null,
+            "bcdHID": 272,
+            "country_code": 0,
+            "endpoint": 129,
             "report_length": 64,
             "bInterval": 1,
             "has_out_endpoint": false,
@@ -1077,7 +1085,10 @@
             "interface": 4,
             "subclass": 0,
             "protocol": 0,
-            "name": "HID Interface",
+            "name": null,
+            "bcdHID": 272,
+            "country_code": 0,
+            "endpoint": 130,
             "report_length": 4,
             "bInterval": 1,
             "has_out_endpoint": false,
@@ -1088,7 +1099,10 @@
             "interface": 5,
             "subclass": 0,
             "protocol": 0,
-            "name": "HID Interface",
+            "name": null,
+            "bcdHID": 272,
+            "country_code": 0,
+            "endpoint": 132,
             "report_length": 64,
             "bInterval": 1,
             "has_out_endpoint": false,

@@ -43,6 +43,8 @@ ln -s $G/functions/acm.0 $G/configs/c.1/
 ls /sys/class/udc | head -n 1 > $G/UDC
 # root shell without a login prompt (busybox login refuses root on ttyGS0)
 ( while :; do /sbin/getty -n -l /bin/sh -L 115200 ttyGS0 vt100; sleep 1; done ) >/dev/null 2>&1 &
+# so the gadget can be removed later: an open ttyGS0 blocks removing acm.0
+echo $! > /run/usb-console.pid
 """
 
 

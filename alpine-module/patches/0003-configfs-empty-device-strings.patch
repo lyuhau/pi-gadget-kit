@@ -1,0 +1,18 @@
+--- a/drivers/usb/gadget/configfs.c	2026-10-12 01:59:27
++++ b/drivers/usb/gadget/configfs.c	2026-10-12 01:59:27
+@@ -1732,9 +1732,12 @@
+ 			goto err_comp_cleanup;
+ 		}
+ 
+-		gi->cdev.desc.iManufacturer = s[USB_GADGET_MANUFACTURER_IDX].id;
+-		gi->cdev.desc.iProduct = s[USB_GADGET_PRODUCT_IDX].id;
+-		gi->cdev.desc.iSerialNumber = s[USB_GADGET_SERIAL_IDX].id;
++		/* unset or empty strings get index 0 (none), like a real device without one */
++#define GADGET_STR_ID(idx)	(s[idx].s && s[idx].s[0] ? s[idx].id : 0)
++		gi->cdev.desc.iManufacturer = GADGET_STR_ID(USB_GADGET_MANUFACTURER_IDX);
++		gi->cdev.desc.iProduct = GADGET_STR_ID(USB_GADGET_PRODUCT_IDX);
++		gi->cdev.desc.iSerialNumber = GADGET_STR_ID(USB_GADGET_SERIAL_IDX);
++#undef GADGET_STR_ID
+ 
+ 		gi->cdev.usb_strings = s;
+ 	}

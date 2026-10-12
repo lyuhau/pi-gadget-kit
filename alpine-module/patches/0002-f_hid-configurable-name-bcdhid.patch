@@ -1,0 +1,174 @@
+--- a/drivers/usb/gadget/function/f_hid.c	2026-10-12 01:57:57
++++ b/drivers/usb/gadget/function/f_hid.c	2026-10-12 01:58:18
+@@ -64,6 +64,13 @@
+ 	unsigned short			report_length;
+ 	unsigned char			interval;
+ 	bool				interval_user_set;
++	unsigned short			bcd_hid;
++	unsigned char			country_code;
++	/* per-instance interface string, so each HID interface can differ */
++	char				name[USB_MAX_STRING_LEN];
++	struct usb_string		strings[2];
++	struct usb_gadget_strings	stringtab;
++	struct usb_gadget_strings	*stringtabs[2];
+ 
+ 	/*
+ 	 * use_out_ep - if true, the OUT Endpoint (interrupt out method)
+@@ -275,26 +282,6 @@
+ 	(struct usb_descriptor_header *)&hidg_interface_desc,
+ 	(struct usb_descriptor_header *)&hidg_desc,
+ 	(struct usb_descriptor_header *)&hidg_fs_in_ep_desc,
+-	NULL,
+-};
+-
+-/*-------------------------------------------------------------------------*/
+-/*                                 Strings                                 */
+-
+-#define CT_FUNC_HID_IDX	0
+-
+-static struct usb_string ct_func_string_defs[] = {
+-	[CT_FUNC_HID_IDX].s	= "HID Interface",
+-	{},			/* end of list */
+-};
+-
+-static struct usb_gadget_strings ct_func_string_table = {
+-	.language	= 0x0409,	/* en-US */
+-	.strings	= ct_func_string_defs,
+-};
+-
+-static struct usb_gadget_strings *ct_func_strings[] = {
+-	&ct_func_string_table,
+ 	NULL,
+ };
+ 
+@@ -930,6 +917,9 @@
+ 		{
+ 			struct hid_descriptor hidg_desc_copy = hidg_desc;
+ 
++			hidg_desc_copy.bcdHID = cpu_to_le16(hidg->bcd_hid);
++			hidg_desc_copy.bCountryCode = hidg->country_code;
++
+ 			VDBG(cdev, "USB_REQ_GET_DESCRIPTOR: HID\n");
+ 			hidg_desc_copy.rpt_desc.bDescriptorType = HID_DT_REPORT;
+ 			hidg_desc_copy.rpt_desc.wDescriptorLength =
+@@ -1160,12 +1150,18 @@
+ 	hidg->get_req->context = hidg;
+ 	hidg->get_report_returned = true;
+ 
+-	/* maybe allocate device-global string IDs, and patch descriptors */
+-	us = usb_gstrings_attach(c->cdev, ct_func_strings,
+-				 ARRAY_SIZE(ct_func_string_defs));
+-	if (IS_ERR(us))
+-		return PTR_ERR(us);
+-	hidg_interface_desc.iInterface = us[CT_FUNC_HID_IDX].id;
++	/* this instance's interface string, if it has one */
++	hidg_interface_desc.iInterface = 0;
++	if (hidg->name[0]) {
++		hidg->strings[0].s = hidg->name;
++		hidg->stringtab.language = 0x0409;	/* en-us */
++		hidg->stringtab.strings = hidg->strings;
++		hidg->stringtabs[0] = &hidg->stringtab;
++		us = usb_gstrings_attach(c->cdev, hidg->stringtabs, 1);
++		if (IS_ERR(us))
++			return PTR_ERR(us);
++		hidg_interface_desc.iInterface = us[0].id;
++	}
+ 
+ 	/* allocate instance-specific interface IDs, and patch descriptors */
+ 	status = usb_interface_id(c, f);
+@@ -1223,6 +1219,8 @@
+ 	 * We can use hidg_desc struct here but we should not relay
+ 	 * that its content won't change after returning from this function.
+ 	 */
++	hidg_desc.bcdHID = cpu_to_le16(hidg->bcd_hid);
++	hidg_desc.bCountryCode = hidg->country_code;
+ 	hidg_desc.rpt_desc.bDescriptorType = HID_DT_REPORT;
+ 	hidg_desc.rpt_desc.wDescriptorLength =
+ 		cpu_to_le16(hidg->report_desc_length);
+@@ -1381,7 +1379,44 @@
+ F_HID_OPT(protocol, 8, 255);
+ F_HID_OPT(no_out_endpoint, 8, 1);
+ F_HID_OPT(report_length, 16, 65535);
++F_HID_OPT(bcd_hid, 16, 65535);
++F_HID_OPT(country_code, 8, 255);
+ 
++static ssize_t f_hid_opts_name_show(struct config_item *item, char *page)
++{
++	struct f_hid_opts *opts = to_f_hid_opts(item);
++	int result;
++
++	mutex_lock(&opts->lock);
++	result = sysfs_emit(page, "%s\n", opts->name);
++	mutex_unlock(&opts->lock);
++
++	return result;
++}
++
++static ssize_t f_hid_opts_name_store(struct config_item *item,
++				     const char *page, size_t len)
++{
++	struct f_hid_opts *opts = to_f_hid_opts(item);
++	int ret;
++
++	mutex_lock(&opts->lock);
++	if (opts->refcnt) {
++		ret = -EBUSY;
++		goto end;
++	}
++	/* whole write minus a trailing newline; "\n" alone clears it */
++	ret = scnprintf(opts->name, min(sizeof(opts->name), len + 1), "%s", page);
++	if (ret && opts->name[ret - 1] == '\n')
++		opts->name[ret - 1] = '\0';
++	ret = len;
++end:
++	mutex_unlock(&opts->lock);
++	return ret;
++}
++
++CONFIGFS_ATTR(f_hid_opts_, name);
++
+ static ssize_t f_hid_opts_report_desc_show(struct config_item *item, char *page)
+ {
+ 	struct f_hid_opts *opts = to_f_hid_opts(item);
+@@ -1488,6 +1523,9 @@
+ 	&f_hid_opts_attr_protocol,
+ 	&f_hid_opts_attr_no_out_endpoint,
+ 	&f_hid_opts_attr_report_length,
++	&f_hid_opts_attr_bcd_hid,
++	&f_hid_opts_attr_country_code,
++	&f_hid_opts_attr_name,
+ 	&f_hid_opts_attr_interval,
+ 	&f_hid_opts_attr_report_desc,
+ 	&f_hid_opts_attr_dev,
+@@ -1538,6 +1576,8 @@
+ 
+ 	opts->interval = 4;
+ 	opts->interval_user_set = false;
++	opts->bcd_hid = 0x0101;
++	scnprintf(opts->name, sizeof(opts->name), "HID Interface");
+ 
+ 	opts->func_inst.free_func_inst = hidg_free_inst;
+ 	ret = &opts->func_inst;
+@@ -1629,6 +1669,9 @@
+ 	hidg->report_desc_length = opts->report_desc_length;
+ 	hidg->interval = opts->interval;
+ 	hidg->interval_user_set = opts->interval_user_set;
++	hidg->bcd_hid = opts->bcd_hid;
++	hidg->country_code = opts->country_code;
++	strscpy(hidg->name, opts->name, sizeof(hidg->name));
+ 	if (opts->report_desc) {
+ 		hidg->report_desc = kmemdup(opts->report_desc,
+ 					    opts->report_desc_length,
+--- a/drivers/usb/gadget/function/u_hid.h	2026-10-12 01:57:57
++++ b/drivers/usb/gadget/function/u_hid.h	2026-10-12 01:57:57
+@@ -27,6 +27,10 @@
+ 	bool				report_desc_alloc;
+ 	unsigned char			interval;
+ 	bool				interval_user_set;
++	/* interface string; empty means none (iInterface 0) */
++	char				name[USB_MAX_STRING_LEN];
++	unsigned short			bcd_hid;
++	unsigned char			country_code;
+ 
+ 	/*
+ 	 * Protect the data form concurrent access by read/write

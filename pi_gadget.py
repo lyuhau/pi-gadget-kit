@@ -159,6 +159,14 @@ def setup_audio(g, fn, inst, speed, descs):
             name(f"{base}/{pfx}_alt1_name", None if not alt_names.get(1) else "Active")
             g.write(f"{base}/{pfx}_max_packet_size", a["wMaxPacketSize"])
             g.write(f"{base}/{pfx}_ep_num", a["endpoint"] & 0x0F)
+            # terminal/unit IDs as captured: c_it/p_ot are the USB-side terminals
+            usb_id, phys_id = st.get("usb_terminal_id"), st.get("terminal_id")
+            # optional: older builds of the patch lack these
+            g.write(f"{base}/{pfx}_{usb_side}_id", usb_id, optional=True)
+            g.write(f"{base}/{pfx}_{phys}_id", phys_id, optional=True)
+            g.write(f"{base}/{pfx}_fu_id", st.get("fu_id"), optional=True)
+            if st.get("fu_control_size") in (1, 2):
+                g.write(f"{base}/fu_control_size", st["fu_control_size"], optional=True)
         if len(st["alts"]) > 1:
             g.skipped.append(f"{key}: only the first of {len(st['alts'])} alternate formats is reproduced")
 
@@ -173,6 +181,13 @@ def setup_hid(g, fn, inst):
     g.write(f"{base}/subclass", fn["subclass"])
     g.write(f"{base}/report_length", fn["report_length"])
     g.write(f"{base}/report_desc", bytes.fromhex(fn["report_desc"]))
+    # alpine-module/patches/0002 adds these; the stock module lacks them.
+    if g.has(f"{base}/name"):
+        g.write(f"{base}/name", fn["name"] or "\n")  # "\n" clears: no string
+        if fn.get("bcdHID") is not None:
+            g.write(f"{base}/bcd_hid", fn["bcdHID"])
+        if fn.get("country_code") is not None:
+            g.write(f"{base}/country_code", fn["country_code"])
     if not fn["has_out_endpoint"]:
         g.write(f"{base}/no_out_endpoint", 1, optional=True)
     if fn.get("bInterval"):

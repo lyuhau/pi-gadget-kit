@@ -493,7 +493,7 @@ def build_audio(cap, descs, by_if, s):
     def feature(fu_ids, direction):
         fus = [units[i] for i in fu_ids if units[i]["name"] == "FEATURE_UNIT"]
         if not fus:
-            return {"mute": False, "volume": None, "fu_name": None}
+            return {"mute": False, "volume": None, "fu_name": None, "fu_id": None, "fu_control_size": None}
         fu = fus[0]
         ctl = fu["bmaControls"]
         vol = None
@@ -506,7 +506,8 @@ def build_audio(cap, descs, by_if, s):
                 vol = {"min": round(ca["min_db"] * 256), "max": round(ca["max_db"] * 256), "res": None, "source": "coreaudio"}
             else:
                 vol = {"min": None, "max": None, "res": None, "source": "unknown"}
-        return {"mute": any(c & mute_bit for c in ctl[:2]), "volume": vol, "fu_name": s(fu.get("iFeature"))}
+        return {"mute": any(c & mute_bit for c in ctl[:2]), "volume": vol, "fu_name": s(fu.get("iFeature")),
+                "fu_id": fu["bUnitID"], "fu_control_size": fu.get("bControlSize", 4)}
 
     out = {"kind": "uac2" if v2 else "uac1", "control_interface": ac["bInterfaceNumber"],
            "name": s(ac.get("iInterface")), "host_to_device": None, "device_to_host": None}
@@ -552,6 +553,7 @@ def build_audio(cap, descs, by_if, s):
                           "terminal_type_name": TERMINAL_TYPES.get(phys.get("wTerminalType"), "unknown"),
                           "terminal_name": s(phys.get("iTerminal")),
                           "usb_terminal_name": s(units.get(usb_term, {}).get("iTerminal")),
+                          "terminal_id": phys.get("bTerminalID"), "usb_terminal_id": usb_term,
                           **feature(path, direction)}
     return out
 
@@ -562,8 +564,11 @@ def build_hid(cap, alts, ifnum, s):
     eps = [d for d in ds if d["name"] == "ENDPOINT" and d["transfer"] == "interrupt"]
     ep_in = next((e for e in eps if e["direction"] == "IN"), None)
     rd = cap["hid_report_descriptors"].get(str(ifnum))
+    hid = next((d for d in ds if d["name"] == "HID"), {})
     return {"kind": "hid", "interface": ifnum, "subclass": iface["bInterfaceSubClass"],
             "protocol": iface["bInterfaceProtocol"], "name": s(iface.get("iInterface")),
+            "bcdHID": hid.get("bcdHID"), "country_code": hid.get("bCountryCode"),
+            "endpoint": ep_in["bEndpointAddress"] if ep_in else None,
             "report_length": ep_in["wMaxPacketSize"] if ep_in else 8,
             "bInterval": ep_in["bInterval"] if ep_in else None,
             "has_out_endpoint": any(e["direction"] == "OUT" for e in eps),
@@ -689,7 +694,8 @@ def cmd_show(args):
 
 def cmd_compare(args):
     a, b = pick(load(args.a), args.index_a), pick(load(args.b), args.index_b)
-    fa, fb = flatten(a["model"]), flatten(b["model"])
+    # rebuild from the raw data so captures taken by older versions compare fully
+    fa, fb = flatten(build_model(a)), flatten(build_model(b))
     diffs = [(k, fa.get(k), fb.get(k)) for k in sorted(set(fa) | set(fb)) if fa.get(k) != fb.get(k)]
     print(f"model fields: {len(set(fa) | set(fb))}, matching: {len(set(fa) | set(fb)) - len(diffs)}, different: {len(diffs)}")
     for k, va, vb in diffs:
@@ -697,6 +703,18 @@ def cmd_compare(args):
     ca = [c["raw"] for c in a["configurations"]]
     cb = [c["raw"] for c in b["configurations"]]
     print("raw config descriptors:", "identical" if ca == cb else "differ (expected: the Linux gadget builds its own)")
+
+
+def cmd_refresh(args):
+    """Recompute the stored model from the raw capture data, e.g. after this
+    script learned to extract more fields."""
+    with open(args.file) as f:
+        data = json.load(f)
+    for cap in data["devices"]:
+        cap["model"] = build_model(cap)
+    with open(args.file, "w") as f:
+        json.dump(data, f, indent=2)
+    print(f"refreshed {args.file}")
 
 
 def main():
@@ -719,6 +737,9 @@ def main():
     k.add_argument("--index-a", type=int)
     k.add_argument("--index-b", type=int)
     k.set_defaults(fn=cmd_compare)
+    r = sub.add_parser("refresh", help="recompute a capture's model from its raw data")
+    r.add_argument("file")
+    r.set_defaults(fn=cmd_refresh)
     args = p.parse_args()
     args.fn(args)
 

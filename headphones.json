@@ -569,6 +569,8 @@
               "terminal_type_name": "headphones",
               "terminal_name": null,
               "usb_terminal_name": null,
+              "terminal_id": 36,
+              "usb_terminal_id": 38,
               "mute": true,
               "volume": {
                 "min": -19712,
@@ -576,7 +578,9 @@
                 "res": null,
                 "source": "coreaudio"
               },
-              "fu_name": null
+              "fu_name": null,
+              "fu_id": 34,
+              "fu_control_size": 1
             },
             "device_to_host": {
               "interface": 2,
@@ -602,6 +606,8 @@
               "terminal_type_name": "headset",
               "terminal_name": null,
               "usb_terminal_name": null,
+              "terminal_id": 35,
+              "usb_terminal_id": 39,
               "mute": true,
               "volume": {
                 "min": -21248,
@@ -609,7 +615,9 @@
                 "res": null,
                 "source": "coreaudio"
               },
-              "fu_name": null
+              "fu_name": null,
+              "fu_id": 40,
+              "fu_control_size": 1
             }
           },
           {
@@ -618,6 +626,9 @@
             "subclass": 0,
             "protocol": 0,
             "name": null,
+            "bcdHID": 272,
+            "country_code": 0,
+            "endpoint": 129,
             "report_length": 64,
             "bInterval": 1,
             "has_out_endpoint": false,
@@ -629,6 +640,9 @@
             "subclass": 0,
             "protocol": 0,
             "name": null,
+            "bcdHID": 272,
+            "country_code": 0,
+            "endpoint": 130,
             "report_length": 4,
             "bInterval": 1,
             "has_out_endpoint": false,
@@ -640,6 +654,9 @@
             "subclass": 0,
             "protocol": 0,
             "name": null,
+            "bcdHID": 272,
+            "country_code": 0,
+            "endpoint": 132,
             "report_length": 64,
             "bInterval": 1,
             "has_out_endpoint": false,

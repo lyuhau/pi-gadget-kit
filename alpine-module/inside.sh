@@ -25,6 +25,10 @@ SUMS
     mv tmp/linux-$KV "$SRC" && rmdir tmp
 fi
 
+[ -d "$KDIR" ] || apk add -q --allow-untrusted /cache/apk/linux-rpi-dev-$V-r0.apk
+mkdir -p /cache/apk
+[ -f /cache/apk/linux-rpi-dev-$V-r0.apk ] || (cd /cache/apk && apk fetch -q linux-rpi-dev=$V-r0) || true
+
 # Fresh copy each build so patches always apply to pristine source.
 rm -rf /build/tree && mkdir -p /build/tree && cp -a "$SRC"/. /build/tree/
 cd /build/tree
@@ -34,16 +38,22 @@ for p in /repo/alpine-module/patches/*.patch; do
     patch -p1 -s < "$p"
 done
 
-F=drivers/usb/gadget/function
-mkdir -p /build/mod && cp $F/f_uac1.c $F/u_audio.h $F/u_uac1.h $F/uac_common.h \
-    drivers/usb/gadget/legacy/raw_gadget.c /build/mod/
-cat > /build/mod/Makefile <<'MK'
-obj-m := usb_f_uac1.o raw_gadget.o
-usb_f_uac1-y := f_uac1.o
-MK
-make -s -C "$KDIR" M=/build/mod modules
-mkdir -p /repo/out/modules
-cp /build/mod/*.ko /repo/out/modules/
-for m in /repo/out/modules/*.ko; do
-    echo "$(basename "$m"): $(strings "$m" | grep -m1 "^vermagic=")"
+# Build whole directories with the kernel's own Makefiles and the Pi kernel's
+# config, so multi-file modules (libcomposite, dwc2) and their symbol
+# versions come out right. raw_gadget isn't enabled in Alpine's config, so
+# switch it on for this build.
+J=$(nproc)
+# The gadget Makefiles add -I$(srctree)/drivers/usb/gadget{,/function,/udc};
+# srctree is the headers package, which doesn't ship those private headers.
+# (The container is discarded after each run, so this edit doesn't stick.)
+for d in drivers/usb/gadget drivers/usb/gadget/function drivers/usb/gadget/udc; do
+    mkdir -p "$KDIR/$d" && cp /build/tree/$d/*.h "$KDIR/$d/"
 done
+make -s -j"$J" -C "$KDIR" M=/build/tree/drivers/usb/gadget CONFIG_USB_RAW_GADGET=m modules
+make -s -j"$J" -C "$KDIR" M=/build/tree/drivers/usb/dwc2 modules
+
+rm -rf /repo/out/modules && mkdir -p /repo/out/modules
+find /build/tree -name '*.ko' -exec cp {} /repo/out/modules/ \;
+ls /repo/out/modules | tr '\n' ' '; echo
+m=/repo/out/modules/usb_f_uac1.ko
+echo "vermagic: $(strings "$m" | grep -m1 '^vermagic=')"
