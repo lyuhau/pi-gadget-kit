@@ -14,6 +14,7 @@ services on top of the ones enabled here.
 import argparse
 import io
 import os
+import shutil
 import sys
 import tarfile
 import time
@@ -67,7 +68,13 @@ def wpa_quote(s):
     return f'"{s}"'
 
 
-def build(hostname, wifi, pubkey, console=True):
+KMODS_START = """#!/bin/sh
+# Load the patched USB gadget modules before anything pulls in the stock ones.
+sh /etc/usbpi/pi_kmods.sh load > /run/kmods.log 2>&1
+"""
+
+
+def build(hostname, wifi, pubkey, console=True, kmods=False):
     files = {  # path -> (mode, content)
         "etc/hostname": (0o644, f"{hostname}\n"),
         "etc/hosts": (0o644, f"127.0.0.1\tlocalhost {hostname}\n::1\t\tlocalhost {hostname}\n"),
@@ -83,7 +90,9 @@ def build(hostname, wifi, pubkey, console=True):
             f"\tpsk={wpa_quote(wifi['PASSWORD'])}\n"
             "}\n")),
         "etc/conf.d/wpa_supplicant": (0o644, 'wpa_supplicant_args=""\nwpa_supplicant_if="wlan0"\n'),
-        "etc/modules": (0o644, "af_packet\nipv6\nbrcmfmac\ndwc2\nlibcomposite\n"),
+        # libcomposite is loaded later, by the console script or the patched-
+        # module loader; loading the stock one here would block the patched one
+        "etc/modules": (0o644, "af_packet\nipv6\nbrcmfmac\ndwc2\n"),
         "etc/lbu/lbu.conf": (0o644, "LBU_MEDIA=mmcblk0p1\n"),
         "root/.ssh/authorized_keys": (0o600, pubkey.strip() + "\n"),
     }
@@ -95,6 +104,14 @@ def build(hostname, wifi, pubkey, console=True):
             services.setdefault(level, []).extend(svcs)
     else:
         dirs_extra = set()
+    if kmods:
+        # local.d runs in name order: load modules before usb-console.start
+        files["etc/local.d/00-kmods.start"] = (0o755, KMODS_START)
+        files["etc/usbpi/pi_kmods.sh"] = (0o755, open(os.path.join(HERE, "alpine-module", "pi_kmods.sh")).read())
+        dirs_extra |= {"etc/local.d", "etc/usbpi"}
+        services.setdefault("boot", [])
+        if "local" not in services["boot"]:
+            services["boot"].append("local")
     dirs = {"etc", "etc/apk", "etc/network", "etc/wpa_supplicant", "etc/conf.d", "etc/lbu",
             "etc/runlevels", "root", "root/.ssh"} | dirs_extra
     links = {}
@@ -129,11 +146,21 @@ def main():
     p.add_argument("--wifi", default=os.path.join(HERE, "wifi.local"))
     p.add_argument("--pubkey", default=os.path.expanduser("~/.ssh/id_ed25519.pub"))
     p.add_argument("--no-console", action="store_true", help="leave out the USB serial debug console")
+    p.add_argument("--kmods", metavar="DIR", help="patched gadget modules (alpine-module/build.sh output, "
+                   "e.g. out/modules) to copy to the card and load at boot")
     a = p.parse_args()
 
     if not os.path.exists(os.path.join(a.bootfs, ".alpine-release")):
         sys.exit(f"{a.bootfs} doesn't look like an Alpine boot partition")
-    ovl = build(a.hostname, read_wifi(a.wifi), open(a.pubkey).read(), console=not a.no_console)
+    ovl = build(a.hostname, read_wifi(a.wifi), open(a.pubkey).read(), console=not a.no_console,
+                kmods=bool(a.kmods))
+    if a.kmods:
+        dest = os.path.join(a.bootfs, "kmods")
+        os.makedirs(dest, exist_ok=True)
+        names = ["libcomposite", "u_audio", "u_serial", "usb_f_acm", "usb_f_uac1", "usb_f_hid"]
+        for n in names:
+            shutil.copyfile(os.path.join(a.kmods, n + ".ko"), os.path.join(dest, n + ".ko"))
+        print(f"copied {len(names)} patched modules to kmods/")
     for old in (f for f in os.listdir(a.bootfs) if f.endswith(".apkovl.tar.gz")):
         os.remove(os.path.join(a.bootfs, old))  # init uses the first one it finds
     with open(os.path.join(a.bootfs, f"{a.hostname}.apkovl.tar.gz"), "wb") as f:
