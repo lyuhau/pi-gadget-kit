@@ -6,15 +6,15 @@ Build the Pi's SD card contents from an image config (config/pi.toml).
   build_card.py config/pi.toml --install /Volumes/ALPINE
   build_card.py config/pi.toml --refetch                # re-download cached packages
 
-Relative paths in the config (device description, Wi-Fi file, modules) are
-relative to the config file.
+Relative paths in the config (device description, Wi-Fi file) are relative
+to the config file.
 
 Steps:
   1. Alpine release tarball, verified against [alpine] sha256 (cached in out/cache/)
-  2. patched kernel modules from [kernel_modules], checked against its kernel
+  2. the patched gadget modules (out/modules/), checked against its kernel
   3. the [device] plan, written to out/device.plan and the card
   4. packages Alpine doesn't bundle, downloaded into the card's apk cache via
-     Docker; their files and hashes go in image/packages.lock
+     Docker; their files and hashes go in packages.lock next to the config
   5. the apkovl overlay: image/overlay/ plus files generated from the config
      and the secrets under [access]
   6. a manifest of every file's sha256 (out/card-<hostname>.manifest)
@@ -39,14 +39,34 @@ except ImportError:  # Python < 3.11
     import tomli as tomllib
 
 import gadget_plan
-from wifi_config import read_wifi, wpa_quote
 
 REPO = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(REPO, "out")
 MTIME = 946684800  # fixed timestamp (2000-01-01) so the overlay is reproducible
-
-
 CONFIG_DIR = REPO  # set from the config file's location in main()
+
+# What an image config may set; anything else is rejected as a likely mistake.
+CONFIG_KEYS = {
+    "alpine": {"version", "arch", "sha256"},
+    "system": {"hostname", "packages", "repositories"},
+    "access": {"wifi", "ssh_public_key", "debug_console"},
+    "device": {"description", "max_speed", "test_ids", "start_at_boot"},
+}
+
+# Fixed plumbing rather than config: changing these mostly breaks Wi-Fi, SSH
+# or USB device mode.
+# Loaded by the "modules" service. libcomposite comes later, with KMODS:
+# loading the stock one here would block the patched one.
+BOOT_MODULES = ["af_packet", "ipv6", "brcmfmac", "dwc2"]
+# usercfg.txt: dwc2 in peripheral mode makes the Pi a USB device
+BOOT_CONFIG = ["dtoverlay=dwc2,dr_mode=peripheral"]
+# "local" runs /etc/local.d/*.start (patched modules, debug console, device);
+# wpa_supplicant/networking go in "default", once the Wi-Fi driver has loaded.
+SERVICES = {"boot": ["local"], "default": ["wpa_supplicant", "networking", "sshd", "chronyd"]}
+# Patched gadget modules (alpine-module/build.sh output), loaded at boot in
+# this order before anything can pull in the stock ones.
+KMODS_DIR = os.path.join(OUT, "modules")
+KMODS = ["libcomposite", "u_audio", "u_serial", "usb_f_acm", "usb_f_uac1", "usb_f_hid"]
 
 
 def rel(path):
@@ -64,6 +84,27 @@ def sha256(path):
 
 def step(msg):
     print(f"== {msg}")
+
+
+# ---------------------------------------------------------------- Wi-Fi
+
+def read_wifi(path):
+    vals = {}
+    for line in open(path):
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            vals[k.strip()] = v.strip()
+    missing = [k for k in ("SSID", "PASSWORD", "COUNTRY") if not vals.get(k)]
+    if missing:
+        sys.exit(f"{path}: fill in {', '.join(missing)}")
+    return vals
+
+
+def wpa_quote(s):
+    if '"' in s or "\n" in s:
+        sys.exit("SSID/password containing a double quote or newline isn't supported")
+    return f'"{s}"'
 
 
 # ---------------------------------------------------------------- steps
@@ -98,23 +139,19 @@ def kernel_release(card):
     return cfgs[0][len("config-"):] if cfgs else None
 
 
-def copy_kmods(cfg, card):
-    km = cfg.get("kernel_modules")
-    if not km:
-        return []
+def copy_kmods(card):
     release = kernel_release(card)
     dest = os.path.join(card, "kmods")
     os.makedirs(dest)
-    for m in km["load"]:
-        src = os.path.join(rel(km["dir"]), m + ".ko")
+    for m in KMODS:
+        src = os.path.join(KMODS_DIR, m + ".ko")
         if not os.path.exists(src):
             sys.exit(f"{src} missing: run alpine-module/build.sh")
         data = open(src, "rb").read()
         if f"vermagic={release} ".encode() not in data:
             sys.exit(f"{m}.ko wasn't built for this release's kernel {release}: rebuild with alpine-module/build.sh")
         shutil.copyfile(src, os.path.join(dest, m + ".ko"))
-    print(f"{len(km['load'])} modules for kernel {release}")
-    return km["load"]
+    print(f"{len(KMODS)} modules for kernel {release}")
 
 
 def make_plan(cfg):
@@ -123,8 +160,7 @@ def make_plan(cfg):
     if not dev:
         print("no [device]: the Pi only offers the debug console")
         return None
-    text, p = gadget_plan.plan_from_file(rel(dev["description"]), patched=bool(cfg.get("kernel_modules")),
-                                         max_speed=dev.get("max_speed") or None,
+    text, p = gadget_plan.plan_from_file(rel(dev["description"]), max_speed=dev.get("max_speed") or None,
                                          test_ids=dev.get("test_ids", False))
     text = text.replace(f"from {rel(dev['description'])}", f"from {dev['description']}")
     path = os.path.join(OUT, "device.plan")
@@ -173,17 +209,17 @@ def fetch_packages(cfg, card, refetch):
     files = sorted(f for f in os.listdir(cache) if not f.startswith("."))
     shutil.copytree(cache, os.path.join(card, "cache"), ignore=shutil.ignore_patterns(".*"))
     lock = "".join(f"{sha256(os.path.join(cache, f))}  {f}\n" for f in files if f.endswith(".apk"))
-    lock_path = os.path.join(REPO, "image", "packages.lock")
+    lock_path = os.path.join(CONFIG_DIR, "packages.lock")
     old = open(lock_path).read() if os.path.exists(lock_path) else None
     with open(lock_path, "w") as f:
         f.write("# packages downloaded into the card's apk cache (build_card.py)\n" + lock)
     n = lock.count("\n")
-    print(f"{n} cached packages; image/packages.lock "
+    print(f"{n} cached packages; {os.path.relpath(lock_path, REPO)} "
           + ("unchanged" if old and old.split("\n", 1)[1] == lock else "updated: review the diff"))
     return True
 
 
-def overlay(cfg, plan, kmods, cached):
+def overlay(cfg, plan, cached):
     s, acc = cfg["system"], cfg["access"]
     wifi = read_wifi(rel(acc["wifi"]))
     pubkey = open(os.path.expanduser(acc["ssh_public_key"])).read().strip()
@@ -205,7 +241,7 @@ def overlay(cfg, plan, kmods, cached):
         "etc/apk/repositories": "\n".join(["/media/mmcblk0p1/apks"] + s["repositories"]) + "\n",
         # makes Alpine's init add its standard boot services next to ours
         "etc/.default_boot_services": "",
-        "etc/modules": "\n".join(s["boot_modules"]) + "\n",
+        "etc/modules": "\n".join(BOOT_MODULES) + "\n",
     }
     for p, text in gen.items():
         files[p] = (0o644, text.encode())
@@ -217,9 +253,8 @@ def overlay(cfg, plan, kmods, cached):
         f"\tpsk={wpa_quote(wifi['PASSWORD'])}\n"
         "}\n").encode())
     files["root/.ssh/authorized_keys"] = (0o600, (pubkey + "\n").encode())
-    if kmods:
-        files["etc/usb-gadget/kmods.list"] = (0o644, (" ".join(kmods) + "\n").encode())
-        files["etc/usb-gadget/pi_kmods.sh"] = (0o755, open(os.path.join(REPO, "alpine-module", "pi_kmods.sh"), "rb").read())
+    files["etc/usb-gadget/kmods.list"] = (0o644, (" ".join(KMODS) + "\n").encode())
+    files["etc/usb-gadget/pi_kmods.sh"] = (0o755, open(os.path.join(REPO, "alpine-module", "pi_kmods.sh"), "rb").read())
     if plan:
         files["etc/usb-gadget/gadget.sh"] = (0o755, open(os.path.join(REPO, "gadget.sh"), "rb").read())
         files["etc/usb-gadget/device.plan"] = (0o644, plan.encode())
@@ -227,7 +262,7 @@ def overlay(cfg, plan, kmods, cached):
             files["etc/usb-gadget/start-at-boot"] = (0o644, b"")
 
     links = {f"etc/runlevels/{level}/{svc}": f"/etc/init.d/{svc}"
-             for level, svcs in cfg["services"].items() for svc in svcs}
+             for level, svcs in SERVICES.items() for svc in svcs}
     if cached:
         links["etc/apk/cache"] = "/media/mmcblk0p1/cache"
 
@@ -312,9 +347,11 @@ def validate(cfg, path):
     wifi = rel(cfg["access"]["wifi"])
     if not os.path.exists(wifi):
         sys.exit(f"{path}: [access] wifi file {wifi} doesn't exist")
-    if "gadgets" in cfg or "boot" in cfg:
-        sys.exit(f"{path}: [gadgets.*] and [boot] were replaced by a single [device] section "
-                 "(see image/template.toml)")
+    unknown = [f"[{sec}]" for sec in cfg if sec not in CONFIG_KEYS] + \
+        [f"[{sec}] {key}" for sec, keys in cfg.items() if sec in CONFIG_KEYS
+         for key in keys if key not in CONFIG_KEYS[sec]]
+    if unknown:
+        sys.exit(f"{path}: unknown settings {', '.join(unknown)} (see image/template.toml)")
     dev = cfg.get("device")
     if dev is not None:
         if "description" not in dev:
@@ -345,17 +382,17 @@ def main():
     extract(alpine_tarball(cfg, a.refetch), card)
     print(f"alpine-rpi {cfg['alpine']['version']} {cfg['alpine']['arch']}, kernel {kernel_release(card)}")
     step("kernel modules")
-    kmods = copy_kmods(cfg, card)
+    copy_kmods(card)
     step("device plan")
     plan = make_plan(cfg)
     step("packages")
     cached = fetch_packages(cfg, card, a.refetch)
     step("overlay")
-    name, data, n = overlay(cfg, plan, kmods, cached)
+    name, data, n = overlay(cfg, plan, cached)
     with open(os.path.join(card, name), "wb") as f:
         f.write(data)
     with open(os.path.join(card, "usercfg.txt"), "w") as f:
-        f.write("\n".join(cfg["system"]["boot_config"]) + "\n")
+        f.write("\n".join(BOOT_CONFIG) + "\n")
     at_boot = "device" if plan and cfg["device"].get("start_at_boot") else "debug console"
     print(f"{name}: {n} files; at boot: {at_boot}")
 

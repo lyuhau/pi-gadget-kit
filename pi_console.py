@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
 Run shell commands on the Pi over its USB serial debug console (the root shell
-alpine_overlay.py sets up on ttyGS0). For when SSH isn't available.
+image/overlay/etc/local.d/10-usb-console.start runs on ttyGS0). For when SSH
+isn't available, e.g. to find the Pi's address.
 
-  pi_console.py 'dmesg | tail'
+  pi_console.py 'ip -4 addr show wlan0'
   pi_console.py --port /dev/cu.usbmodem101 --timeout 30 'rc-status'
 """
 import argparse

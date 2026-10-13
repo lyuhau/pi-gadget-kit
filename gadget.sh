@@ -5,6 +5,7 @@
 #                          unbinding whatever gadget held it (e.g. the console)
 #   gadget.sh down [NAME]  detach and remove it; rebind what it displaced
 #   gadget.sh list         gadgets and the port they're bound to
+#   gadget.sh remove NAME  remove a gadget without rebinding anything
 # Defaults: the card's plan (/etc/usb-gadget/device.plan) and its gadget, "device".
 set -e
 CFS=/sys/kernel/config/usb_gadget
@@ -13,10 +14,24 @@ PLAN=/etc/usb-gadget/device.plan
 
 die() { echo "gadget.sh: $*" >&2; exit 1; }
 
+release_ttys() {
+	# A process holding a gadget serial port open (the debug console's shell)
+	# makes removing its acm function hang. Each step tolerates "already gone".
+	if [ -f /run/usb-console.pid ]; then
+		kill "$(cat /run/usb-console.pid)" 2>/dev/null || true
+		rm -f /run/usb-console.pid
+	fi
+	for t in /dev/ttyGS*; do
+		[ -e "$t" ] && { fuser -k "$t" 2>/dev/null || true; }
+	done
+	return 0
+}
+
 remove() {
 	g="$CFS/$1"
 	[ -d "$g" ] || return 0
 	echo > "$g/UDC" 2>/dev/null || true
+	for f in "$g"/functions/acm.*; do [ -d "$f" ] && release_ttys; done
 	for c in "$g"/configs/*/; do
 		[ -d "$c" ] || continue
 		find "$c" -maxdepth 1 -type l -exec rm {} \;
@@ -92,5 +107,6 @@ list)
 	for g in "$CFS"/*/; do
 		[ -d "$g" ] && echo "$(basename "$g"): $(cat "$g/UDC")"
 	done ;;
-*) echo "usage: gadget.sh up [PLAN] | down [NAME] | list" >&2; exit 2 ;;
+remove) [ -n "$2" ] || die "usage: gadget.sh remove NAME"; remove "$2" ;;
+*) echo "usage: gadget.sh up [PLAN] | down [NAME] | list | remove NAME" >&2; exit 2 ;;
 esac

@@ -3,229 +3,144 @@
 Build a Raspberry Pi Zero 2 W SD card from one config file, so the Pi boots
 into a known state and presents itself to a host as the USB device you
 describe. The device can be composite, with several interfaces such as audio
-plus HID. The Pi runs Alpine Linux, with patched USB gadget modules so that
-details the stock kernel hard-codes can be set. Use it as is, or as a
-template for a project that needs a Pi to act as a USB device.
-
-## How it fits together
+plus HID. The Pi runs Alpine Linux with patched USB gadget modules, so details
+the stock kernel hard-codes can be matched. Use it as is, or as a template
+for a project that needs a Pi to act as a USB device.
 
 ```
-config/device.json ─► gadget_plan.py ─► out/device.plan ─┐
-config/pi.toml ─────► build_card.py ──► card files ───────┴─► Pi: gadget.sh up
+config/  ─►  build_card.py  ─►  SD card  ─►  Pi: gadget.sh up
 ```
 
-- **Device description** (`config/device.json`): what the Pi should present, in
-  the format of the sibling project [usb-capture](../usb-capture). Capture a
-  real device there and copy the file here, or write one. This repo reads only
-  its `model`; that README describes the format.
-- **Plan:** `gadget_plan.py` turns the description plus options into the
-  exact configfs operations that present it.
-- **Image config** (`config/pi.toml`): everything on the Pi's card. That
-  covers the Alpine release, packages, services, access, patched modules, and
-  the device and whether it starts at boot.
-- **Card:** `build_card.py` builds the card from the config, reproducibly.
-- **Pi:** `gadget.sh` replays a plan. Python is on the Pi only for your own
-  code, such as audio processing.
+## What it can present
+
+One device at a time: the Zero 2 W has a single USB device port.
+
+- **Supported:** composite or not, at full or high speed, with audio (UAC1;
+  UAC2 is untested) and HID interfaces.
+- **Not supported:** other interface classes (mass storage, serial, network,
+  MIDI, video) are skipped, and the Pi can't present low speed, which many
+  simple keyboards and mice use.
+- **Partial matches:** anything else the description has that can't be
+  reproduced is listed as a note when the card is built. The full list is in
+  `gadget_plan.py`.
+
+For full control, the `raw_gadget` module (in `out/modules/`, not installed on
+the card) lets a program on the Pi answer every USB request itself.
 
 ## Requirements (Mac)
 
-- Docker, for building kernel modules and caching packages (e.g. `brew
-  install colima docker && colima start --vm-type vz --cpu 6 --memory 12`)
-- `brew install rpiboot`, to write the SD card through the Pi itself
-  (no card reader needed)
-- A Python venv for this repo:
+- Docker for the builds, e.g. `brew install colima docker`, then
+  `colima start --vm-type vz --cpu 6 --memory 12` (once per Mac restart)
+- `brew install rpiboot`, to write the SD card through the Pi (no card reader needed)
+- A venv. `tomli` is needed because Apple's Python is 3.9. Use Apple's
+  `/usr/bin/python3`: some Homebrew builds crash pip.
 
 ```bash
 /usr/bin/python3 -m venv .venv && .venv/bin/pip install pyserial tomli
 ```
 
-Use Apple's `/usr/bin/python3`: Homebrew's Python 3.13.16 reports an empty
-macOS version, which crashes pip.
-
 ## Set up
 
-Your settings live in `config/`: three files, plus your SSH key.
+Your settings live in `config/`. Paths in `pi.toml` are relative to it. This
+template repo ignores `config/`; a project made from it commits `config/` but
+keeps `wifi.local` out of git.
 
-```
-config/
-  pi.toml       # the image config: everything on the card
-  device.json   # the USB device the Pi presents
-  wifi.local    # Wi-Fi secrets
-```
-
-This template repo ignores `config/`. A project made from it commits
-`config/`, but keeps `wifi.local` ignored. Relative paths in `pi.toml` are
-relative to `config/`.
-
-1. **Image config.** Copy the template:
-
-   ```bash
-   mkdir -p config && cp image/template.toml config/pi.toml
-   ```
-
-   Its `[device]` section:
-
-   ```toml
-   [device]
-   description = "device.json"
-   max_speed = ""         # "" = as described, or "full-speed" / "high-speed"
-   test_ids = false       # true: VID:PID 1209:0001 instead of the described IDs
-   start_at_boot = false  # true: present the device at power-on instead of the debug console
-   ```
-
-2. **Device description.** Put it at `config/device.json`, e.g. a capture
-   from usb-capture:
-
-   ```bash
-   cp ../usb-capture/captures/mydevice.json config/device.json
-   ```
-
-3. **Wi-Fi.** Create `config/wifi.local`. The Zero 2 W only does 2.4 GHz:
-
-   ```
-   SSID=MyNetwork
-   PASSWORD=...
-   COUNTRY=US
-   ```
-
-   Root logs in over SSH with the public key named under `[access]` (default
-   `~/.ssh/id_ed25519.pub`); there's no password login.
-
-4. **Patched kernel modules:**
-
-   ```bash
-   alpine-module/build.sh            # -> out/modules/, about 15 s after the first run
-   ```
+1. **Image config:** `mkdir -p config && cp image/template.toml config/pi.toml`,
+   then edit it. Each setting is commented.
+2. **Device:** put the description at `config/device.json`. Capture a real
+   device with the sibling project [usb-capture](../usb-capture) and copy the
+   file here, or write one in its format (that README describes it).
+3. **Wi-Fi:** create `config/wifi.local` with `SSID=…`, `PASSWORD=…` and
+   `COUNTRY=US` lines. The Zero 2 W only does 2.4 GHz.
+4. **Patched modules:** `alpine-module/build.sh` writes them to
+   `out/modules/`. The first run downloads about 150 MB of kernel source.
 
 ## Build and install the card
 
-```bash
-.venv/bin/python build_card.py config/pi.toml        # -> out/card-<hostname>/ + manifest
-```
+1. Build: `.venv/bin/python build_card.py config/pi.toml`. Output goes to
+   `out/card-<hostname>/`, and the same inputs always give the same
+   `out/card-<hostname>.manifest`.
+2. Expose the card on the Mac: unplug the Pi, take the card out, plug the Pi
+   in (with no card it waits in USB boot mode), insert the card, then run
+   `rpiboot -d "$(brew --prefix rpiboot)/share/rpiboot/msd"`.
+3. A new card needs one FAT32 format. Check the disk number first with
+   `diskutil list external`:
+   `diskutil eraseDisk FAT32 ALPINE MBRFormat /dev/diskN`.
+4. Install, which replaces the card's contents and verifies every file:
+   `.venv/bin/python build_card.py config/pi.toml --install /Volumes/ALPINE`,
+   then `diskutil eject /Volumes/ALPINE`.
+5. Replug the Pi with the card in. It boots in 30–40 s:
+   - installs its packages from the card (offline; Alpine runs from RAM);
+   - joins Wi-Fi;
+   - either presents the device (`start_at_boot`) or opens the debug console.
 
-To get the card onto the Mac without a card reader:
+## Use the Pi
 
-1. Unplug the Pi and remove the card.
-2. Plug the Pi into the Mac: with no card it waits in USB boot mode.
-3. Insert the card.
-4. Expose the card as a disk:
+**Find the Pi.** Alpine doesn't announce its hostname, so check your router,
+or ask over the debug console:
+`.venv/bin/python pi_console.py 'ip -4 addr show wlan0'`.
 
-```bash
-rpiboot -d "$(brew --prefix rpiboot)/share/rpiboot/msd"
-```
+**SSH:** `ssh root@<address>`, with the key from `[access]`. After a
+reinstall the Pi has new host keys, so first run `ssh-keygen -R <address>`.
 
-A new card needs one FAT32 (MBR) format first. Check the disk number with
-`diskutil list external` before running this:
-
-```bash
-diskutil eraseDisk FAT32 ALPINE MBRFormat /dev/diskN
-```
-
-Then install, which replaces the card's contents and verifies every file:
-
-```bash
-.venv/bin/python build_card.py config/pi.toml --install /Volumes/ALPINE
-```
-
-Eject the card and replug the Pi with the card in. It boots in about 30
-seconds. It installs the configured packages from the card offline (Alpine
-runs from RAM), joins Wi-Fi and loads the patched modules. Then it either
-presents the device (`start_at_boot`) or exposes a USB serial root shell
-(`pi_console.py 'command'`). After a reinstall the Pi has new SSH host keys,
-so clear the old one with `ssh-keygen -R <pi-address>`.
-
-Builds are reproducible: the same inputs give the same
-`out/card-<hostname>.manifest`. The generated `image/packages.lock` lists the
-packages cached on the card, with hashes, so updates from Alpine's mirrors
-show up as a diff.
-
-## Run a gadget
+**The device:**
 
 ```bash
-ssh root@<pi> sh /etc/usb-gadget/gadget.sh up       # present the device
-ssh root@<pi> sh /etc/usb-gadget/gadget.sh down     # back to the debug console
-ssh root@<pi> sh /etc/usb-gadget/gadget.sh list
+ssh root@<address> sh /etc/usb-gadget/gadget.sh up      # present the device
+ssh root@<address> sh /etc/usb-gadget/gadget.sh down    # remove it; the debug console comes back if enabled
+ssh root@<address> sh /etc/usb-gadget/gadget.sh list
 ```
 
-To check that the host sees what the description says, use usb-capture's
-"Verify a clone".
+To check what the host actually sees, use usb-capture's "Verify a clone".
 
-**Audio on the Pi:** an audio gadget is ALSA card `hw:0,0`. Host playback arrives
-as capture, and the device's mic is playback. The `Capture Rate` control
-(`amixer -c 0 cget iface=PCM,name='Capture Rate'`) is 0 until the host starts
-streaming, and recording fails with an I/O error until then. So wait for it to
-be non-zero, and reopen when it drops back to 0. `Playback Rate` does the same
-for the mic direction.
+**Audio:** your code on the Pi uses ALSA `hw:0,0`. Host playback arrives as
+capture, and the device's microphone is playback. Reads fail until the host
+streams, so wait for the `Capture Rate` control to become non-zero:
+`amixer -c 0 cget iface=PCM,name='Capture Rate'`. Reopen when it drops back
+to 0. `Playback Rate` does the same for the microphone direction.
 
-**Faster iteration, without rebuilding the card:**
-- **Plans:** run `gadget_plan.py config/device.json -o x.plan`, copy it to the Pi,
-  then run `gadget.sh up x.plan`.
-- **Modules:** copy `out/modules/*.ko` to the Pi, then run
-  `sh /etc/usb-gadget/pi_kmods.sh swap DIR`.
+**Faster iteration** (without reinstalling the card):
+- **Plan:** after editing `device.json` or `[device]`, rerun
+  `build_card.py config/pi.toml` without `--install`. Copy `out/device.plan`
+  to the Pi and run `gadget.sh up device.plan`.
+- **Modules:** copy `out/modules/*.ko` to the Pi and run
+  `sh /etc/usb-gadget/pi_kmods.sh swap DIR`. It removes the device, reloads
+  the modules, and restores the debug console.
 
-Changes made on the Pi itself are lost at reboot unless saved with
-`lbu commit`. Better to put them in the image config.
+Changes made on the Pi are lost at reboot unless saved with `lbu commit`. Put
+lasting ones in the config.
 
-## Kernel patches (`alpine-module/patches/`)
+**Security:** the debug console is a root shell with no password for anything
+plugged into the Pi's USB port (set `debug_console = false` to drop it), and
+the Wi-Fi password is stored in plain text on the card.
 
-Built against the exact source of Alpine's `linux-rpi` 6.18.52 (checked
-against the APKBUILD's sha512sums). The matching headers package is cached in
-a Docker volume in case Alpine's mirror moves on. `build_card.py` refuses
-modules built for a different kernel than the configured release's.
+## Changing the Alpine release
 
-- **0001 `f_uac1`:**
-  - correct full-speed descriptors: stock reused the high-speed `bInterval`
-    of 4, which means 8 ms at full speed, and broke full-speed audio
-  - configurable terminal types, packet sizes, endpoint numbers, terminal
-    and unit IDs, feature-unit control size, and an optional interrupt
-    endpoint
-  - an empty name means no string, and with all names empty it claims no
-    string IDs
-  - string attributes no longer report short writes, which made writers
-    retry forever
-- **0002 `f_hid`:** per-interface name (empty means none), `bcd_hid`,
-  `country_code`.
-- **0003 `configfs`:**
-  - an empty manufacturer, product or serial gets string index 0
-  - `hide_strings` keeps a string (and its ID) without referencing it
+The patched modules are built for one exact kernel. To move to another
+release:
+1. Update `[alpine]` and `repositories` in `config/pi.toml`.
+2. Update `alpine-module/kernel.env` with the kernel version and checksums
+   from that branch's `main/linux-rpi/APKBUILD` in aports.
+3. Rebuild with `alpine-module/build.sh`. The patches may need adjusting.
 
-## Limits
-
-The Pi presents **one device at a time**: the Zero 2 W has a single USB
-device port. That device can be composite. `gadget_plan.py` reproduces what it
-knows how to map:
-
-- **Classes:** UAC1, UAC2 and HID interfaces. Others (mass storage, CDC
-  serial/network, MIDI, UVC, printer) have kernel gadget functions but aren't
-  mapped yet; they're reported and skipped. Vendor-specific interfaces need a
-  userspace program (FunctionFS or raw-gadget).
-- **Speed:** full and high speed only. The Pi can't present low speed, which
-  many simple keyboards, mice and controllers use (a clone runs at full speed
-  instead), and its port is USB 2.0, so no SuperSpeed.
-- **Descriptors:** the first configuration and the first alternate audio
-  format per direction only. English (`0x409`) strings only, and strings
-  beyond a contiguous run 1..N can't be placed. BOS, Microsoft OS descriptors
-  and WebUSB aren't set yet, though configfs supports them.
-- **Behavior:** vendor requests, timing and error responses aren't part of a
-  description.
-
-The general fallback is raw-gadget (built by `alpine-module/build.sh`): a
-program on the Pi answers every request itself, at the cost of implementing
-its data paths too.
+`build_card.py` refuses modules built for a different kernel than the
+release's.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `image/template.toml` | Template image config (copy to `config/pi.toml`) |
-| `image/overlay/` | Static files for the card's Alpine overlay (startup scripts, network) |
-| `image/packages.lock` | Generated: packages cached on the card, with hashes |
-| `build_card.py` | Mac: build and install the card |
-| `gadget_plan.py` | Mac: device description → plan |
-| `gadget.sh` | Pi: apply a plan (`up` / `down` / `list`) |
-| `config/` | Your settings: `pi.toml`, `device.json`, `wifi.local` (gitignored here) |
-| `out/` | Build output: modules, `device.plan`, card contents, manifests (gitignored) |
-| `alpine-module/` | Patched gadget modules, built in Docker; `pi_kmods.sh` loads them on the Pi |
-| `pi_console.py` | Mac: run commands over the Pi's USB serial debug console |
-| `wifi_config.py` | `config/wifi.local` parsing, shared with the Buildroot tree |
-| `buildroot/` | Buildroot tree for a self-contained image: builds, not yet booted or patched |
+| `config/` | Your settings: `pi.toml`, `device.json`, `wifi.local`; plus the generated `packages.lock`, listing cached packages with hashes |
+| `image/template.toml` | Template for `config/pi.toml` |
+| `image/overlay/` | Files placed on the Pi as-is (startup scripts, network) |
+| `build_card.py` | Builds and installs the card; owns the fixed plumbing (boot modules, services) |
+| `gadget_plan.py` | Device description → plan of configfs operations (run by `build_card.py`) |
+| `gadget.sh` | On the Pi: apply the plan (`up` / `down` / `list`) |
+| `alpine-module/` | Patched gadget modules (`patches/`, built in Docker for `kernel.env`'s kernel); `pi_kmods.sh` loads them on the Pi |
+| `pi_console.py` | Runs commands over the Pi's USB debug console |
+| `out/` | Build output: modules, `device.plan`, card contents, manifests |
+
+The patches in `alpine-module/patches/` make descriptor details of `f_uac1`,
+`f_hid` and configfs settable. One also fixes stock `f_uac1`'s broken
+full-speed audio. Each patch file says what it changes. A Buildroot-based
+image (fast boot, self-contained) is parked on the `buildroot` branch.

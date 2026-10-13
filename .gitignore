@@ -3,7 +3,6 @@ __pycache__/
 *.img
 *.img.xz
 .DS_Store
-buildroot/local/
 out/
 # Your settings. This template repo ignores them all; a project made from
 # the template commits config/ but keeps wifi.local ignored.

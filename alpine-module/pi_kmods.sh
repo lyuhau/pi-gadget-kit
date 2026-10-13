@@ -4,45 +4,23 @@
 # modprobe for the stock modules from modloop.
 #
 #   pi_kmods.sh load [DIR]   at boot, before any gadget exists
-#   pi_kmods.sh swap [DIR]   at runtime: removes every gadget first
+#   pi_kmods.sh swap [DIR]   at runtime: removes every gadget, reloads the
+#                            modules, then brings the debug console back
 #   pi_kmods.sh status       which gadget modules are loaded, and whose
 set -e
+HERE=$(dirname "$0")
 DIR=${2:-/media/mmcblk0p1/kmods}
 CFS=/sys/kernel/config/usb_gadget
-# dependency order: libcomposite first, functions last ([kernel_modules] load
-# in the image config, written to kmods.list by build_card.py)
-MODS=$(cat /etc/usb-gadget/kmods.list 2>/dev/null || echo "libcomposite u_audio u_serial usb_f_acm usb_f_uac1 usb_f_hid")
-
-stop_console_shell() {
-	# A process holding ttyGS0 open makes removing the acm function hang.
-	# (each step tolerates "already gone": under set -e a failed kill would
-	# silently abort the whole swap)
-	if [ -f /run/usb-console.pid ]; then
-		kill "$(cat /run/usb-console.pid)" 2>/dev/null || true
-		rm -f /run/usb-console.pid
-	fi
-	for t in /dev/ttyGS*; do
-		[ -e "$t" ] && { fuser -k "$t" 2>/dev/null || true; }
-	done
-	return 0
-}
+# dependency order: libcomposite first, functions last (written by build_card.py)
+MODS=$(cat "$HERE/kmods.list")
 
 teardown_all() {
-	stop_console_shell
 	for g in "$CFS"/*/; do
 		[ -d "$g" ] || continue
-		echo > "$g/UDC" 2>/dev/null || true
-		for c in "$g"configs/*/; do
-			[ -d "$c" ] || continue
-			find "$c" -maxdepth 1 -type l -exec rm {} \;
-			for s in "$c"strings/*/; do [ -d "$s" ] && rmdir "$s"; done
-			rmdir "$c"
-		done
-		for d in "$g"strings/*/*/; do [ -d "$d" ] && rmdir "$d"; done  # custom strings
-		for d in "$g"functions/*/ "$g"strings/*/; do [ -d "$d" ] && rmdir "$d"; done
-		rmdir "$g"
+		sh "$HERE/gadget.sh" remove "$(basename "$g")"
 		echo "removed gadget $(basename "$g")"
 	done
+	rm -f /run/gadget.displaced
 }
 
 unload_all() {
@@ -83,7 +61,10 @@ status() {
 mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
 case "$1" in
 	load) load_all; status ;;
-	swap) teardown_all; unload_all; load_all; status ;;
+	swap)
+		teardown_all; unload_all; load_all; status
+		console=/etc/local.d/10-usb-console.start
+		if [ -f "$console" ]; then sh "$console" && echo "debug console restored"; fi ;;
 	status) status ;;
 	*) echo "usage: $0 load|swap|status [DIR]" >&2; exit 2 ;;
 esac

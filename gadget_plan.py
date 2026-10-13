@@ -6,14 +6,20 @@ itself as described. gadget.sh replays a plan on the Pi.
 
   gadget_plan.py config/device.json -o out/device.plan
   gadget_plan.py config/device.json --max-speed high-speed --test-ids
-  gadget_plan.py config/device.json --stock     # for unpatched gadget modules
 
-A device description is a JSON in usb-capture's format (capture_usb.py,
-~/Code/usb-capture): capture a real device and copy it to config/device.json, or write
-one.
+build_card.py runs this for the card; run it by hand only to experiment. A
+device description is a JSON in usb-capture's format (capture_usb.py,
+~/Code/usb-capture). Only its "model" is read (usb-capture README: Capture
+format). Plans are deterministic, so they can be diffed. Plans assume the
+patched gadget modules from alpine-module/.
 
-Only the description's "model" is read (usb-capture README: Capture format). Plans are
-deterministic, so they can be committed and diffed.
+Reproduced: device IDs and class, strings (a contiguous run 1..N, including
+unreferenced ones), configuration attributes and power, UAC1 audio (fully,
+via patch 0001) and UAC2 audio (via the stock module's settings, untested),
+and HID interfaces. Not reproduced, reported as notes in the plan:
+interface classes other than audio and HID, alternate audio formats after
+the first, configurations after the first, strings beyond 1..N or in other
+languages than 0x409. BOS, Microsoft OS and WebUSB descriptors aren't set.
 
 Plan format, one operation per line ("#" lines are comments):
   name NAME            gadget directory under /sys/kernel/config/usb_gadget
@@ -33,8 +39,8 @@ LANG = "0x409"
 
 
 class Plan:
-    def __init__(self, name, patched):
-        self.name, self.patched = name, patched
+    def __init__(self, name):
+        self.name = name
         self.ops, self.notes = [], []
 
     def mkdir(self, path):
@@ -67,14 +73,12 @@ def plan_audio(p, fn, inst, speed):
     captures (host plays to it, i.e. headphones), p_* = the gadget plays (mic)."""
     base = f"functions/{inst}"
     p.mkdir(base)
-    # alpine-module/patches/0001 adds these to uac1; the stock module lacks them.
-    patched = fn["kind"] == "uac1" and p.patched
-    if fn["kind"] == "uac1" and not patched:
-        p.note("stock usb_f_uac1: names, terminal types and endpoint layout can't be matched")
+    # uac1 has alpine-module/patches/0001's extra settings; uac2 is stock.
+    patched = fn["kind"] == "uac1"
 
     def name(path, value):
-        # Patched module: an empty value means "no string", like a descriptor
-        # with string index 0. Stock: leave the kernel's default name.
+        # Patched: an empty value means "no string", like a descriptor with
+        # string index 0. Stock: an empty value leaves the kernel's default.
         if patched:
             p.write(path, value or "")
         elif value:
@@ -107,7 +111,7 @@ def plan_audio(p, fn, inst, speed):
             p.write(f"{base}/{pfx}_volume_res", vol["res"])
             if vol["min"] is None or vol["res"] is None:
                 p.note(f"{key}: volume {'range' if vol['min'] is None else 'step'} unknown, kernel default used")
-        if st["terminal_type"] and (patched or fn["kind"] == "uac2"):
+        if st["terminal_type"]:
             p.write(f"{base}/{pfx}_terminal_type", st["terminal_type"])
         # The physical terminal is the gadget's output (c) or input (p) terminal.
         phys, usb_side = ("ot", "it") if pfx == "c" else ("it", "ot")
@@ -134,11 +138,6 @@ def plan_strings(p, strings, dev):
     """The gadget numbers strings in order: 1 manufacturer, 2 product, 3 serial,
     then custom strings, so a contiguous run 1..N can be matched, including
     strings the device has but never references (patch 0003's hide_strings)."""
-    if not p.patched or "table" not in strings:
-        for key in ("manufacturer", "product", "serialnumber"):
-            if strings[key]:
-                p.write(f"strings/{LANG}/{key}", strings[key])
-        return
     table = {int(k): v for k, v in strings["table"].items()}
     slots = (("manufacturer", 1, "iManufacturer"), ("product", 2, "iProduct"),
              ("serialnumber", 3, "iSerialNumber"))
@@ -173,12 +172,11 @@ def plan_hid(p, fn, inst):
     p.write(f"{base}/subclass", fn["subclass"])
     p.write(f"{base}/report_length", fn["report_length"])
     p.hex(f"{base}/report_desc", fn["report_desc"])
-    if p.patched:  # alpine-module/patches/0002
-        p.write(f"{base}/name", fn["name"] or "")
-        if fn.get("bcdHID") is not None:
-            p.write(f"{base}/bcd_hid", fn["bcdHID"])
-        if fn.get("country_code") is not None:
-            p.write(f"{base}/country_code", fn["country_code"])
+    p.write(f"{base}/name", fn["name"] or "")  # alpine-module/patches/0002
+    if fn.get("bcdHID") is not None:
+        p.write(f"{base}/bcd_hid", fn["bcdHID"])
+    if fn.get("country_code") is not None:
+        p.write(f"{base}/country_code", fn["country_code"])
     if not fn["has_out_endpoint"]:
         p.write(f"{base}/no_out_endpoint", 1, optional=True)
     if fn.get("bInterval"):
@@ -186,11 +184,11 @@ def plan_hid(p, fn, inst):
     return True
 
 
-def build_plan(model, name="device", patched=True, max_speed=None, test_ids=False):
+def build_plan(model, name="device", max_speed=None, test_ids=False):
     if model.get("format") != MODEL_FORMAT:
         sys.exit(f"description model format {model.get('format')} != {MODEL_FORMAT}: "
                  "run usb-capture's capture_usb.py refresh, or update gadget_plan.py")
-    p = Plan(name, patched)
+    p = Plan(name)
     dv = model["device"]
     vid, pid = (0x1209, 0x0001) if test_ids else (dv["idVendor"], dv["idProduct"])
     p.write("idVendor", hexw(vid))
@@ -252,11 +250,11 @@ def pick(devs, index):
     return next((d for d in devs if d["device_descriptor"]["bDeviceClass"] != 9), devs[0])
 
 
-def plan_from_file(description, name="device", index=None, patched=True, max_speed=None, test_ids=False):
+def plan_from_file(description, name="device", index=None, max_speed=None, test_ids=False):
     with open(description) as f:
         model = pick(json.load(f)["devices"], index)["model"]
-    p = build_plan(model, name, patched, max_speed, test_ids)
-    options = (f"name={name} target={'patched' if patched else 'stock'} "
+    p = build_plan(model, name, max_speed, test_ids)
+    options = (f"name={name} "
                f"max_speed={max_speed or 'as-described'} test_ids={'yes' if test_ids else 'no'}")
     return render(p, description, options), p
 
@@ -267,11 +265,10 @@ def main():
     a.add_argument("-o", "--output", help="plan file (default: stdout)")
     a.add_argument("--name", default="device", help="gadget directory name (default: device)")
     a.add_argument("--index", type=int, help="which device in the file (default: first non-hub)")
-    a.add_argument("--stock", action="store_true", help="plan for unpatched gadget modules")
     a.add_argument("--max-speed", choices=["full-speed", "high-speed"], help="override the described speed")
     a.add_argument("--test-ids", action="store_true", help="use test VID:PID 1209:0001")
     args = a.parse_args()
-    text, p = plan_from_file(args.description, args.name, args.index, not args.stock, args.max_speed, args.test_ids)
+    text, p = plan_from_file(args.description, args.name, args.index, args.max_speed, args.test_ids)
     if args.output:
         with open(args.output, "w") as f:
             f.write(text)

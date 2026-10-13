@@ -1,62 +1,43 @@
-# Template for an image config: everything that ends up on the Pi's SD card.
+# Template for an image config: everything you choose about the Pi's SD card.
 # Copy it to config/pi.toml, put your device.json and wifi.local next to it, then:
 #   build_card.py config/pi.toml [--install /Volumes/ALPINE]
-# Relative paths below are relative to this file. Secrets stay in the files
-# referenced under [access].
+# Relative paths are relative to this file. The fixed plumbing (boot modules,
+# services, USB device mode) lives in build_card.py.
 
 [alpine]
 # The alpine-rpi release, from
 # https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/<arch>/latest-releases.yaml
-# (flavor alpine-rpi: its version and sha256). The patched kernel modules must
-# be built for this release's kernel (see alpine-module/inside.sh).
+# (flavor alpine-rpi: its version and sha256). Its kernel must match
+# alpine-module/kernel.env, which the patched modules are built for.
 version = "3.24.2"
 arch = "aarch64"
 sha256 = "60e6b9f49ec3d2c9660f2ef775f5af3a98cfd2f939c8f55b6f215d00e5ffcb87"
 
 [system]
 hostname = "usb-gadget"
-# Installed at every boot (Alpine runs diskless from RAM): from the card's
-# bundled apks/, and for anything Alpine doesn't bundle, from the card's cache/
-# that build_card.py fills (recorded in image/packages.lock).
+# Installed at every boot (Alpine runs diskless from RAM), offline: from the
+# release's bundled packages, plus a cache build_card.py fills for the rest
+# (listed with hashes in packages.lock next to this file).
 packages = [
   "alpine-base", "openssh", "wpa_supplicant", "ifupdown-ng", "chrony", "iw",  # Wi-Fi, SSH, time
   "alsa-utils",  # arecord/aplay, amixer
-  "python3",     # for audio logic on the Pi
+  "python3",     # for your own code on the Pi
 ]
-# For "apk add" on the running Pi, and where cached packages come from
+# Where cached packages come from, and for "apk add" on the running Pi
 # (match the release branch above).
 repositories = [
   "https://dl-cdn.alpinelinux.org/alpine/v3.24/main",
   "https://dl-cdn.alpinelinux.org/alpine/v3.24/community",
 ]
-# Loaded by the "modules" service. libcomposite is loaded later, from
-# [kernel_modules]: loading the stock one here would block the patched one.
-boot_modules = ["af_packet", "ipv6", "brcmfmac", "dwc2"]
-# usercfg.txt on the boot partition; dwc2 in peripheral mode makes the Pi a USB device
-boot_config = ["dtoverlay=dwc2,dr_mode=peripheral"]
-
-[services]
-# "local" runs /etc/local.d/*.start: patched modules, debug console, boot gadget.
-boot = ["local"]
-# wpa_supplicant/networking in "default": by then the boot runlevel has loaded
-# the Wi-Fi driver and wlan0 exists.
-default = ["wpa_supplicant", "networking", "sshd", "chronyd"]
 
 [access]
-wifi = "wifi.local"      # file with SSID, PASSWORD, COUNTRY lines (always gitignored)
-ssh_public_key = "~/.ssh/id_ed25519.pub"  # root login, key only
-debug_console = true     # USB serial root shell until a gadget takes the port
+wifi = "wifi.local"                       # SSID, PASSWORD, COUNTRY lines; keep it out of git
+ssh_public_key = "~/.ssh/id_ed25519.pub"  # root login over SSH, key only
+debug_console = true                      # USB serial root shell (no password) while no device is up
 
-[kernel_modules]
-# Patched gadget modules (alpine-module/build.sh output), loaded at boot in
-# this order before anything can pull in the stock ones. Remove this section
-# to use Alpine's stock modules (gadget plans are then made for those).
-dir = "../out/modules"
-load = ["libcomposite", "u_audio", "u_serial", "usb_f_acm", "usb_f_uac1", "usb_f_hid"]
-
-# The USB device the Pi presents (it can be composite: several interfaces).
-# description: a device description JSON in usb-capture's format; capture a
-# real device with ~/Code/usb-capture and copy the file here, or write one.
+# The USB device the Pi presents; it can be composite (several interfaces).
+# description: a JSON in usb-capture's format (~/Code/usb-capture): capture a
+# real device there and copy the file here, or write one.
 # Remove this section for a Pi that only offers the debug console.
 [device]
 description = "device.json"

@@ -1,3 +1,11 @@
+usb: gadget: configfs: empty and hidden device strings
+
+- an unset or empty manufacturer, product or serial number gets string
+  index 0 instead of an empty string
+- hide_strings (bit 0 manufacturer, 1 product, 2 serial): keep the string
+  and its ID but don't reference it from the device descriptor, like
+  devices with unreferenced strings
+
 --- a/drivers/usb/gadget/configfs.c	2026-10-12 01:59:27
 +++ b/drivers/usb/gadget/configfs.c	2026-10-12 14:17:28
 @@ -59,6 +59,11 @@

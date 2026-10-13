@@ -1,7 +1,0 @@
-auto lo
-iface lo inet loopback
-
-auto wlan0
-iface wlan0 inet dhcp
-	pre-up wpa_supplicant -B -D nl80211 -i wlan0 -c /etc/wpa_supplicant.conf -P /run/wpa_supplicant.pid
-	post-down kill $(cat /run/wpa_supplicant.pid) 2>/dev/null || true

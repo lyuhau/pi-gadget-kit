@@ -1,3 +1,16 @@
+usb: gadget: f_uac1: make descriptor details configurable
+
+- full speed gets its own endpoint descriptors with bInterval 1 (1 ms);
+  stock reused the high-speed value 4, which means 8 ms at full speed, so
+  full-speed audio didn't work
+- new attributes: c_/p_terminal_type, c_/p_max_packet_size, c_/p_hs_bint,
+  c_/p_ep_num, int_ep_present, c_/p_alt0_name and alt1_name, terminal and
+  unit IDs (c_/p_it_id, ot_id, fu_id), fu_control_size
+- an empty name means no string (index 0); with every name empty the
+  function claims no string IDs at all
+- string attributes report the whole write as consumed (stock reported
+  fewer bytes, so an empty value made writers retry forever)
+
 --- a/drivers/usb/gadget/function/f_uac1.c	2026-10-11 18:17:51
 +++ b/drivers/usb/gadget/function/f_uac1.c	2026-10-12 14:17:28
 @@ -16,6 +16,7 @@

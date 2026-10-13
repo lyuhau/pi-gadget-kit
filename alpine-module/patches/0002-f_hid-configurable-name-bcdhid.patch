@@ -1,3 +1,9 @@
+usb: gadget: f_hid: configurable interface name, bcdHID and country code
+
+- name: per-instance interface string (default "HID Interface"); empty
+  means none (iInterface 0)
+- bcd_hid, country_code: the HID descriptor's version and country
+
 --- a/drivers/usb/gadget/function/f_hid.c	2026-10-12 01:57:57
 +++ b/drivers/usb/gadget/function/f_hid.c	2026-10-12 01:58:18
 @@ -64,6 +64,13 @@
