@@ -22,7 +22,7 @@ release_ttys() {
 		rm -f /run/usb-console.pid
 	fi
 	for t in /dev/ttyGS*; do
-		[ -e "$t" ] && { fuser -k "$t" 2>/dev/null || true; }
+		[ -e "$t" ] && { fuser -k "$t" >/dev/null 2>&1 || true; }
 	done
 	return 0
 }
