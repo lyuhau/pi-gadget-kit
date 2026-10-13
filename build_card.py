@@ -66,10 +66,14 @@ BOOT_CONFIG = ["dtoverlay=dwc2,dr_mode=peripheral"]
 # "local" runs /etc/local.d/*.start (patched modules, debug console, device);
 # wpa_supplicant/networking go in "default", once the Wi-Fi driver has loaded.
 SERVICES = {"boot": ["local"], "default": ["wpa_supplicant", "networking", "sshd", "chronyd"]}
-# Patched gadget modules (alpine-module/build.sh output), loaded at boot in
-# this order before anything can pull in the stock ones.
+# Gadget modules from alpine-module/build.sh (patched, or built with them),
+# loaded at boot in dependency order before anything can pull in the stock
+# ones. The unpatched ones would also load next to the patched (symbol CRCs
+# match), but from one build every function is the same, and pi_kmods.sh
+# swap can unload them all.
 KMODS_DIR = os.path.join(OUT, "modules")
-KMODS = ["libcomposite", "u_audio", "u_serial", "usb_f_acm", "usb_f_uac1", "usb_f_hid"]
+KMODS = ["libcomposite", "u_audio", "u_serial", "u_ether", "usb_f_acm", "usb_f_uac1", "usb_f_uac2", "usb_f_hid",
+         "usb_f_ecm", "usb_f_ncm", "usb_f_rndis"]
 
 
 def rel(path):
