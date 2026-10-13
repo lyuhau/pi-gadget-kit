@@ -69,10 +69,29 @@ keeps `wifi.local` out of git.
 4. Install, which replaces the card's contents and verifies every file:
    `.venv/bin/python build_card.py config/pi.toml --install /Volumes/ALPINE`,
    then `diskutil eject /Volumes/ALPINE`.
-5. Replug the Pi with the card in. It boots in 30–40 s:
-   - installs its packages from the card (offline; Alpine runs from RAM);
+5. Replug the Pi with the card in. It boots (30–40 s diskless, see below):
+   - installs its packages from the card (diskless only; offline);
    - joins Wi-Fi;
    - either presents the device (`start_at_boot`) or opens the debug console.
+
+## Image types
+
+`[image] type` in `pi.toml` picks how the Pi gets its system. Both run Alpine
+from RAM with the same kernel, packages, patched modules and config files.
+
+- **`diskless`** (default): stock Alpine. The card holds the release, an
+  apkovl with the config, and a package cache; every boot installs the
+  packages into RAM. That install is the slow part: the debug console
+  appears after about 17 s, services after about 27 s. On the Pi, `apk add`
+  works and `lbu commit` saves changes to the card.
+- **`initramfs`**: `image_initramfs.py` unpacks the packages on the Mac into
+  one initramfs (`boot/initrd.img`, about 30 MB). The Pi's firmware loads it
+  with the kernel, and `image/init` only starts things: watchdog, modules,
+  the same `/etc/local.d` scripts, Wi-Fi, SSH, time. Packages and changes
+  only come with a rebuild. Needs no Docker for packages, and keeps one ssh
+  host key per hostname in `out/`, so reinstalls keep the Pi's identity.
+
+The card is mounted read-only at `/media/mmcblk0p1` in both.
 
 ## Use the Pi
 
@@ -81,7 +100,7 @@ or ask over the debug console:
 `.venv/bin/python pi_console.py 'ip -4 addr show wlan0'`.
 
 **SSH:** `ssh root@<address>`, with the key from `[access]`. After a
-reinstall the Pi has new host keys, so first run `ssh-keygen -R <address>`.
+diskless reinstall the Pi has new host keys, so first run `ssh-keygen -R <address>`.
 
 **The device:**
 
@@ -107,12 +126,13 @@ to 0. `Playback Rate` does the same for the microphone direction.
   `sh /etc/usb-gadget/pi_kmods.sh swap DIR`. It removes the device, reloads
   the modules, and restores the debug console.
 
-Changes made on the Pi are lost at reboot unless saved with `lbu commit`. Put
-lasting ones in the config.
+Changes made on the Pi are lost at reboot unless saved with `lbu commit`
+(diskless only). Put lasting ones in the config.
 
 **Security:** the debug console is a root shell with no password for anything
 plugged into the Pi's USB port (set `debug_console = false` to drop it), and
-the Wi-Fi password is stored in plain text on the card.
+the Wi-Fi password is stored in plain text on the card (as is the initramfs
+image's ssh host key).
 
 ## Changing the Alpine release
 
@@ -124,7 +144,9 @@ release:
 3. Rebuild with `alpine-module/build.sh`. The patches may need adjusting.
 
 `build_card.py` refuses modules built for a different kernel than the
-release's.
+release's. The initramfs type also needs the release kernel's `linux-rpi`
+package. Alpine's repositories keep only the newest, so once it has moved on
+the build works only from the copy in `out/cache/`.
 
 ## Layout
 
@@ -134,6 +156,7 @@ release's.
 | `image/template.toml` | Template for `config/pi.toml` |
 | `image/overlay/` | Files placed on the Pi as-is (startup scripts, network) |
 | `build_card.py` | Builds and installs the card; owns the fixed plumbing (boot modules, services) |
+| `image_initramfs.py`, `image/init` | The initramfs image type: its build, and its PID 1 on the Pi |
 | `gadget_plan.py` | Device description → plan of configfs operations (run by `build_card.py`) |
 | `gadget.sh` | On the Pi: apply the plan (`up` / `down` / `list`) |
 | `alpine-module/` | Patched gadget modules (`patches/`, built in Docker for `kernel.env`'s kernel); `pi_kmods.sh` loads them on the Pi |

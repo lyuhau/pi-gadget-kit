@@ -4,6 +4,12 @@
 # Relative paths are relative to this file. The fixed plumbing (boot modules,
 # services, USB device mode) lives in build_card.py.
 
+[image]
+# "diskless": stock Alpine, installs its packages into RAM at every boot.
+# "initramfs": the same packages, unpacked into one initramfs when the card is
+# built; boots faster, but packages only change with a rebuild.
+type = "diskless"
+
 [alpine]
 # The alpine-rpi release, from
 # https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/<arch>/latest-releases.yaml
@@ -15,9 +21,9 @@ sha256 = "60e6b9f49ec3d2c9660f2ef775f5af3a98cfd2f939c8f55b6f215d00e5ffcb87"
 
 [system]
 hostname = "usb-gadget"
-# Installed at every boot (Alpine runs diskless from RAM), offline: from the
-# release's bundled packages, plus a cache build_card.py fills for the rest
-# (listed with hashes in packages.lock next to this file).
+# Diskless: installed at every boot, offline, from the release's bundled
+# packages plus a cache build_card.py fills for the rest. Initramfs: unpacked
+# at build time. Either way listed with hashes in packages.lock next to this file.
 packages = [
   "alpine-base", "openssh", "wpa_supplicant", "ifupdown-ng", "chrony", "iw",  # Wi-Fi, SSH, time
   "alsa-utils",  # arecord/aplay, amixer
