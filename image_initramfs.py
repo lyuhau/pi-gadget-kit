@@ -329,7 +329,7 @@ def add_users(tree, scripts):
             group.append([name, "x", str(gid if gid is not None else free(group)), ""])
 
     for script in scripts:
-        for line in script.splitlines():
+        for line in re.sub(r"\\\n", " ", script).splitlines():  # joined continuation lines
             words = shlex.split(line, comments=True) if re.match(r"\s*(addgroup|adduser)\b", line) else []
             words = words[:next((i for i, w in enumerate(words) if re.match(r"[0-9]*>|\|\||&&|;", w)), None)]
             if not words:
