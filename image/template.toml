@@ -3,6 +3,14 @@
 #   build_card.py config/pi.toml [--install /Volumes/ALPINE]
 # Relative paths are relative to this file. The fixed plumbing (boot modules,
 # services, USB device mode) lives in build_card.py.
+# A second config can build on this one: include = "pi.toml" at its top, then
+# only the keys that differ (README: Apps, Dev and release).
+
+[image]
+# "diskless": stock Alpine, installs its packages into RAM at every boot.
+# "initramfs": the same packages, unpacked into one initramfs when the card is
+# built; boots faster, but packages only change with a rebuild.
+type = "diskless"
 
 [alpine]
 # The alpine-rpi release, from
@@ -15,9 +23,9 @@ sha256 = "60e6b9f49ec3d2c9660f2ef775f5af3a98cfd2f939c8f55b6f215d00e5ffcb87"
 
 [system]
 hostname = "usb-gadget"
-# Installed at every boot (Alpine runs diskless from RAM), offline: from the
-# release's bundled packages, plus a cache build_card.py fills for the rest
-# (listed with hashes in packages.lock next to this file).
+# Diskless: installed at every boot, offline, from the release's bundled
+# packages plus a cache build_card.py fills for the rest. Initramfs: unpacked
+# at build time. Either way listed with hashes in packages.lock next to this file.
 packages = [
   "alpine-base", "openssh", "wpa_supplicant", "ifupdown-ng", "chrony", "iw",  # Wi-Fi, SSH, time
   "alsa-utils",  # arecord/aplay, amixer
@@ -31,16 +39,31 @@ repositories = [
 ]
 
 [access]
-wifi = "wifi.local"                       # SSID, PASSWORD, COUNTRY lines; keep it out of git
-ssh_public_key = "~/.ssh/id_ed25519.pub"  # root login over SSH, key only
-debug_console = true                      # USB serial root shell (no password) while no device is up
+wifi = "wifi.local"                       # SSID, PASSWORD, COUNTRY lines; keep it out of git; "" = no Wi-Fi
+ssh_public_key = "~/.ssh/id_ed25519.pub"  # root login over SSH, key only; "" = no sshd
+debug_console = true                      # USB serial root shell (no password) while no device is up, or in it ([device] console)
 
 # The USB device the Pi presents; it can be composite (several interfaces).
 # description: a JSON in usb-capture's format (~/Code/usb-capture): capture a
-# real device there and copy the file here, or write one.
+# real device there and copy the file here; or a hand-written .toml (README:
+# Hand-written devices).
 # Remove this section for a Pi that only offers the debug console.
 [device]
 description = "device.json"
 max_speed = ""         # "" = as described, or "full-speed" / "high-speed"
 test_ids = false       # true: VID:PID 1209:0001 instead of the described IDs
 start_at_boot = false  # false: boot to the debug console; start it with gadget.sh up
+console = false        # true: the device includes the debug console (acm.console)
+
+# Your own program on the Pi, started right after the device (README: Apps).
+# Remove this section for none.
+#[app]
+#name = "myapp"                      # lowercase; /var/lib/myapp, the card's myapp/
+#files = { "opt/myapp/start.sh" = "../pi/start.sh" }  # path on the Pi = source
+#overlay = "overlay"                 # a folder copied onto / as is
+#run = "/opt/myapp/start.sh"         # shell command, started once, before Wi-Fi
+#owns = []                           # "wifi", "time": the platform doesn't start them
+#state = false                       # true: /var/lib/myapp is kept on the card
+#keep_logs = false                   # true: /var/log kept on the card (logs/last, logs/prev)
+#config_txt = []                     # extra config.txt lines, e.g. "gpio=21=ip,pu"
+#kmods = []                          # stock kernel modules to ship and load before run

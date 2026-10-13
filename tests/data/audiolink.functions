@@ -1,0 +1,4 @@
+# functions of gadget 'device' (gadget_plan.py): ID KIND DIRECTORY
+net ecm /sys/kernel/config/usb_gadget/device/functions/ecm.net
+audio uac2 /sys/kernel/config/usb_gadget/device/functions/uac2.audio
+console acm /sys/kernel/config/usb_gadget/device/functions/acm.console
