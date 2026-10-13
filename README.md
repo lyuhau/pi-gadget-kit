@@ -8,7 +8,6 @@ descriptors and the same string table, and audio worked both ways at full speed.
 
 | Path | What it is |
 |---|---|
-| `capture_usb.py` | Mac: capture, show, compare and refresh device captures |
 | `gadget_plan.py` | Mac: capture → gadget plan (the exact configfs writes) |
 | `gadget.sh` | Pi: apply a plan (`up` / `down` / `list`) |
 | `image/template.toml` | Template image config: everything that goes on the Pi's card |
@@ -22,18 +21,17 @@ descriptors and the same string table, and audio worked both ways at full speed.
 
 ## 1. Capture (Mac)
 
-```bash
-/usr/bin/python3 -m venv .venv && .venv/bin/pip install pyusb pyserial tomli   # once; needs: brew install libusb
-.venv/bin/python capture_usb.py capture --wait -o mydevice.json                  # then plug the device in
-sudo .venv/bin/python capture_usb.py capture --vid 0x1038 --pid 0x230a --seize -o mydevice.json
-.venv/bin/python capture_usb.py show mydevice.json
-```
+Captures come from the sibling project
+[usb-capture](../usb-capture) (`capture_usb.py`); see its README. Point a
+`[gadgets.<name>]` section of your image config at the capture file. Paths are
+relative to this repo, e.g. `../usb-capture/captures/mydevice.json`.
 
-Captures in the repo root and the plans made from them are gitignored: they
-describe your devices. `--seize` detaches macOS's drivers (sudo needed), so audio-class and HID
-requests go through. Use `--bus` when two identical devices are plugged in.
-Use Apple's `/usr/bin/python3` for the venv; Homebrew's Python 3.13.16 reports
-an empty macOS version, which crashes pip.
+This repo's venv only needs `pyserial` (`pi_console.py`) and `tomli`
+(`build_card.py` on Python < 3.11):
+
+```bash
+/usr/bin/python3 -m venv .venv && .venv/bin/pip install pyserial tomli
+```
 
 ## 2. Build the card (Mac, needs Docker, e.g. Colima)
 
@@ -66,8 +64,8 @@ starts the `[boot] gadget`.
 
 ```bash
 ssh root@<pi> sh /etc/usbpi/gadget.sh up /etc/usbpi/gadgets/mydevice.plan
-.venv/bin/python capture_usb.py capture --vid <vid> --pid <pid> --bus <bus> -o out/pi.json
-.venv/bin/python capture_usb.py compare mydevice.json out/pi.json
+cd ../usb-capture && .venv/bin/python capture_usb.py capture --vid <vid> --pid <pid> --bus <bus> -o captures/clone.json
+.venv/bin/python capture_usb.py compare captures/mydevice.json captures/clone.json
 ssh root@<pi> sh /etc/usbpi/gadget.sh down clone        # back to the debug console
 ```
 

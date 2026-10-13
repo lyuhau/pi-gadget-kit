@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Turn a capture_usb.py capture into a gadget plan: the exact configfs
+Turn a usb-capture capture (capture_usb.py, ~/Code/usb-capture) into a gadget plan: the exact configfs
 directories, attribute writes and links that make a Linux USB gadget present
 itself like the captured device. gadget.sh replays a plan on the Pi.
 
-  gadget_plan.py headphones.json -o gadgets/gamebuds.plan
-  gadget_plan.py headphones.json --max-speed high-speed --test-ids
-  gadget_plan.py headphones.json --stock     # for unpatched gadget modules
+  gadget_plan.py ../usb-capture/captures/mydevice.json -o gadgets/mydevice.plan
+  gadget_plan.py CAPTURE --max-speed high-speed --test-ids
+  gadget_plan.py CAPTURE --stock     # for unpatched gadget modules
 
-Only the capture's "model" is read (see capture_usb.MODEL_FORMAT). Plans are
+Only the capture's "model" is read (usb-capture README: Capture format). Plans are
 deterministic, so they can be committed and diffed.
 
 Plan format, one operation per line ("#" lines are comments):
@@ -24,7 +24,7 @@ import argparse
 import json
 import sys
 
-MODEL_FORMAT = 1  # matches capture_usb.MODEL_FORMAT
+MODEL_FORMAT = 1  # usb-capture's capture_usb.MODEL_FORMAT
 LANG = "0x409"
 
 
@@ -185,7 +185,7 @@ def plan_hid(p, fn, inst):
 def build_plan(model, name="clone", patched=True, max_speed=None, test_ids=False):
     if model.get("format") != MODEL_FORMAT:
         sys.exit(f"capture model format {model.get('format')} != {MODEL_FORMAT}: "
-                 "run capture_usb.py refresh, or update gadget_plan.py")
+                 "run usb-capture's capture_usb.py refresh, or update gadget_plan.py")
     p = Plan(name, patched)
     dv = model["device"]
     vid, pid = (0x1209, 0x0001) if test_ids else (dv["idVendor"], dv["idProduct"])
