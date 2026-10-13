@@ -6,17 +6,43 @@
 #   gadget.sh down [NAME]  detach and remove it; rebind what it displaced
 #   gadget.sh list         gadgets and the port they're bound to
 #   gadget.sh remove NAME  remove a gadget without rebinding anything
+#   gadget.sh set FUNCTION ATTR=VALUE...
+#                          change attributes of the device that's up, e.g.
+#                          "set audio c_srate=96000 p_srate=96000" (see below)
 # Defaults: the card's plan (/etc/usb-gadget/device.plan) and its gadget, "device".
 # A plan with a "console" operation ([device] console) gets the debug
 # console's shell on that function's serial port.
+#
+# set: a function's attributes can only change while it's in no configuration.
+# So: unbind (the host sees an unplug), unlink every function, write the
+# attributes, link them all back in the plan's order (links are ordered:
+# relinking one alone would move its interfaces to the end), bind again, and
+# bring network interfaces up. FUNCTION is the function's id (audio) or its
+# directory (uac2.audio). The device is relinked and rebound even when a write
+# is refused; then set names it and exits 1.
 set -e
 CFS=/sys/kernel/config/usb_gadget
 DISPLACED=/run/gadget.displaced
+RUNPLAN=/run/gadget.plan  # the plan of the device that's up, for "set"
 PLAN=/etc/usb-gadget/device.plan
 CONSOLE=/etc/usb-gadget/console.sh
 
 die() { echo "gadget.sh: $*" >&2; exit 1; }
 
+
+# Bring network functions' interfaces up, right after every bind, before the
+# host can send. dwc2 shares one receive FIFO between all OUT endpoints and,
+# in DMA mode, only drains it into a queued request: a packet for a network
+# function whose interface is down (no receive requests yet) sits at the head
+# of the FIFO and stalls every OUT transfer behind it, control requests
+# included. Audio, serial and network from the host all go dead.
+net_up() {
+	for f in "$1"/functions/*/; do
+		[ -f "$f/ifname" ] || continue
+		ifname=$(cat "$f/ifname")
+		ip link set dev "$ifname" up || echo "note: couldn't bring $ifname up"
+	done
+}
 
 remove() {
 	g="$CFS/$1"
@@ -83,17 +109,8 @@ up() {
 	done
 	echo "$udc" > "$g/UDC"
 	echo "gadget '$name' up on $udc"
-	# Bring network functions' interfaces up now, before the host can send.
-	# dwc2 shares one receive FIFO between all OUT endpoints and, in DMA mode,
-	# only drains it into a queued request: a packet for a network function
-	# whose interface is down (no receive requests yet) sits at the head of
-	# the FIFO and stalls every OUT transfer behind it, control requests
-	# included. Audio, serial and network from the host all go dead.
-	for f in "$g"/functions/*/; do
-		[ -f "$f/ifname" ] || continue
-		ifname=$(cat "$f/ifname")
-		ip link set dev "$ifname" up || echo "note: couldn't bring $ifname up"
-	done
+	net_up "$g"
+	[ "$plan" -ef "$RUNPLAN" ] || cp "$plan" "$RUNPLAN"
 	if [ -n "$console" ]; then
 		tty=ttyGS$(cat "$g/$console/port_num")
 		sh "$CONSOLE" start "$tty"
@@ -101,8 +118,55 @@ up() {
 	fi
 }
 
+set_attrs() {
+	fn=$1
+	shift
+	want=$fn
+	[ -f "$RUNPLAN" ] || die "no device is up (gadget.sh up)"
+	name=$(sed -n 's/^name //p' "$RUNPLAN")
+	g="$CFS/$name"
+	[ -d "$g/functions/$fn" ] || fn=$(cd "$g/functions" && ls -d -- *."$fn" 2>/dev/null | head -n 1)
+	f="$g/functions/$fn"
+	[ -n "$fn" ] && [ -d "$f" ] || die "gadget '$name' has no function $want"
+	for a in "$@"; do
+		case "$a" in
+		?*=*) [ -f "$f/${a%%=*}" ] || die "$fn has no attribute ${a%%=*}" ;;
+		*) die "usage: gadget.sh set FUNCTION ATTR=VALUE..." ;;
+		esac
+	done
+	# From the unbind on, carry on whatever fails: the device must come back.
+	set +e
+	udc=$(cat "$g/UDC")
+	[ -z "$udc" ] || echo > "$g/UDC"
+	for c in "$g"/configs/*/; do
+		find "$c" -maxdepth 1 -type l -exec rm {} \;
+	done
+	failed=
+	for a in "$@"; do
+		attr=${a%%=*}
+		value=${a#*=}
+		{ printf '%s\n' "$value" > "$f/$attr"; } 2>/dev/null || {
+			echo "gadget.sh: $fn/$attr rejected $value" >&2
+			failed=1
+		}
+	done
+	while read -r op from to; do
+		case "$op $to" in
+		"link configs/"*) ln -s "$g/$from" "$g/$to" || failed=1 ;;
+		esac
+	done < "$RUNPLAN"
+	if [ -n "$udc" ]; then
+		echo "$udc" > "$g/UDC" || failed=1
+		net_up "$g"
+	fi
+	set -e
+	[ -z "$failed" ] || exit 1
+	echo "gadget '$name': $fn set${udc:+, rebound on $udc}"
+}
+
 down() {
 	remove "$1"
+	[ "$(sed -n 's/^name //p' "$RUNPLAN" 2>/dev/null)" = "$1" ] && rm -f "$RUNPLAN"
 	echo "removed gadget '$1'"
 	[ -f "$DISPLACED" ] || return 0
 	while read -r o udc; do
@@ -113,6 +177,12 @@ down() {
 	rm -f "$DISPLACED"
 }
 
+# one change at a time (busybox flock, where built in)
+if [ "$1" != list ] && command -v flock >/dev/null; then
+	exec 9>/run/gadget.lock
+	flock 9
+fi
+
 case "$1" in
 up) up "${2:-$PLAN}" ;;
 down) down "${2:-device}" ;;
@@ -121,5 +191,6 @@ list)
 		[ -d "$g" ] && echo "$(basename "$g"): $(cat "$g/UDC")"
 	done ;;
 remove) [ -n "$2" ] || die "usage: gadget.sh remove NAME"; remove "$2" ;;
-*) echo "usage: gadget.sh up [PLAN] | down [NAME] | list | remove NAME" >&2; exit 2 ;;
+set) [ -n "$2" ] || die "usage: gadget.sh set FUNCTION ATTR=VALUE..."; shift; set_attrs "$@" ;;
+*) echo "usage: gadget.sh up [PLAN] | down [NAME] | list | remove NAME | set FUNCTION ATTR=VALUE..." >&2; exit 2 ;;
 esac
