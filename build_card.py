@@ -77,6 +77,37 @@ KMODS = ["libcomposite", "u_audio", "u_serial", "u_ether", "usb_f_acm", "usb_f_u
          "usb_f_ecm", "usb_f_ncm", "usb_f_rndis"]
 
 
+def load_config(path, seen=()):
+    """The image config, with the file named by a top-level `include` (in the
+    same folder) underneath: its sections are merged key by key, this file's
+    keys winning. Lets a release config share a dev config's settings."""
+    path = os.path.abspath(path)
+    if path in seen:
+        sys.exit(f"{path}: include loop")
+    with open(path, "rb") as f:
+        cfg = tomllib.load(f)
+    base = cfg.pop("include", None)
+    if base is None:
+        return cfg
+    base_path = os.path.join(os.path.dirname(path), base)
+    if not isinstance(base, str) or os.path.dirname(os.path.abspath(base_path)) != os.path.dirname(path):
+        sys.exit(f"{path}: include names a file in the same folder")
+    if not os.path.exists(base_path):
+        sys.exit(f"{path}: include {base} doesn't exist")
+    merged = load_config(base_path, seen + (path,))
+    for sec, val in cfg.items():
+        if isinstance(val, dict) and isinstance(merged.get(sec), dict):
+            merged[sec] = {**merged[sec], **val}
+        else:
+            merged[sec] = val
+    return merged
+
+
+def platform_wifi(cfg):
+    """Whether the platform joins Wi-Fi itself: [access] wifi is set."""
+    return bool(cfg["access"].get("wifi"))
+
+
 def rel(path):
     """A path from the config: relative to the config file, ~ expanded."""
     return os.path.join(CONFIG_DIR, os.path.expanduser(path))
@@ -240,8 +271,6 @@ def config_files(cfg, plan):
     from the config. `plan` is make_plan's (plan, functions) or None.
     path -> (mode, bytes)"""
     s, acc = cfg["system"], cfg["access"]
-    wifi = read_wifi(rel(acc["wifi"]))
-    pubkey = open(os.path.expanduser(acc["ssh_public_key"])).read().strip()
     host = s["hostname"]
     files = {}  # path -> (mode, bytes)
 
@@ -260,14 +289,20 @@ def config_files(cfg, plan):
     }
     for p, text in gen.items():
         files[p] = (0o644, text.encode())
-    files["etc/wpa_supplicant/wpa_supplicant.conf"] = (0o600, (
-        "ctrl_interface=/var/run/wpa_supplicant\n"
-        f"country={wifi['COUNTRY'].upper()}\n"
-        "network={\n"
-        f"\tssid={wpa_quote(wifi['SSID'])}\n"
-        f"\tpsk={wpa_quote(wifi['PASSWORD'])}\n"
-        "}\n").encode())
-    files["root/.ssh/authorized_keys"] = (0o600, (pubkey + "\n").encode())
+    if platform_wifi(cfg):
+        wifi = read_wifi(rel(acc["wifi"]))
+        files["etc/wpa_supplicant/wpa_supplicant.conf"] = (0o600, (
+            "ctrl_interface=/var/run/wpa_supplicant\n"
+            f"country={wifi['COUNTRY'].upper()}\n"
+            "network={\n"
+            f"\tssid={wpa_quote(wifi['SSID'])}\n"
+            f"\tpsk={wpa_quote(wifi['PASSWORD'])}\n"
+            "}\n").encode())
+    else:  # nothing brings wlan0 up: only the loopback
+        files["etc/network/interfaces"] = (0o644, b"auto lo\niface lo inet loopback\n")
+    if acc.get("ssh_public_key"):
+        pubkey = open(os.path.expanduser(acc["ssh_public_key"])).read().strip()
+        files["root/.ssh/authorized_keys"] = (0o600, (pubkey + "\n").encode())
     files["etc/usb-gadget/kmods.list"] = (0o644, (" ".join(KMODS) + "\n").encode())
     files["etc/usb-gadget/pi_kmods.sh"] = (0o755, open(os.path.join(REPO, "alpine-module", "pi_kmods.sh"), "rb").read())
     if plan:
@@ -277,6 +312,16 @@ def config_files(cfg, plan):
         if cfg["device"].get("start_at_boot", False):
             files["etc/usb-gadget/start-at-boot"] = (0o644, b"")
     return files
+
+
+def services(cfg):
+    """SERVICES, without what the config leaves to others or out (diskless)."""
+    drop = set()
+    if not platform_wifi(cfg):
+        drop.add("wpa_supplicant")
+    if not cfg["access"].get("ssh_public_key"):
+        drop.add("sshd")
+    return {level: [s for s in svcs if s not in drop] for level, svcs in SERVICES.items()}
 
 
 def overlay(cfg, plan, cached):
@@ -292,7 +337,7 @@ def overlay(cfg, plan, cached):
         files[p] = (0o644, text.encode())
 
     links = {f"etc/runlevels/{level}/{svc}": f"/etc/init.d/{svc}"
-             for level, svcs in SERVICES.items() for svc in svcs}
+             for level, svcs in services(cfg).items() for svc in svcs}
     if cached:
         links["etc/apk/cache"] = "/media/mmcblk0p1/cache"
 
@@ -367,16 +412,16 @@ def manifest_of(target, expected):
 def validate(cfg, path):
     """Catch an unfilled template before doing any work."""
     missing = [f"[{sec}] {key}" for sec, key in (("alpine", "version"), ("alpine", "sha256"),
-                                                ("system", "hostname"), ("access", "ssh_public_key"))
+                                                ("system", "hostname"))
                if not cfg.get(sec, {}).get(key)]
     if missing:
         sys.exit(f"{path}: fill in {', '.join(missing)} (see image/template.toml)")
-    key = os.path.expanduser(cfg["access"]["ssh_public_key"])
-    if not os.path.exists(key):
+    acc = cfg.setdefault("access", {})
+    key = os.path.expanduser(acc.get("ssh_public_key") or "")
+    if key and not os.path.exists(key):
         sys.exit(f"{path}: [access] ssh_public_key {key} doesn't exist")
-    wifi = rel(cfg["access"]["wifi"])
-    if not os.path.exists(wifi):
-        sys.exit(f"{path}: [access] wifi file {wifi} doesn't exist")
+    if acc.get("wifi") and not os.path.exists(rel(acc["wifi"])):
+        sys.exit(f"{path}: [access] wifi file {rel(acc['wifi'])} doesn't exist")
     unknown = [f"[{sec}]" for sec in cfg if sec not in CONFIG_KEYS] + \
         [f"[{sec}] {key}" for sec, keys in cfg.items() if sec in CONFIG_KEYS
          for key in keys if key not in CONFIG_KEYS[sec]]
@@ -404,8 +449,7 @@ def main():
     global CONFIG_DIR
     CONFIG_DIR = os.path.dirname(os.path.abspath(a.config))
     os.makedirs(OUT, exist_ok=True)
-    with open(a.config, "rb") as f:
-        cfg = tomllib.load(f)
+    cfg = load_config(a.config)
     validate(cfg, a.config)
     host = cfg["system"]["hostname"]
     card = os.path.join(OUT, f"card-{host}")
@@ -437,8 +481,9 @@ def main():
             f.write("\n".join(BOOT_CONFIG) + "\n")
         print(f"{name}: {n} files")
     dev = cfg.get("device") or {}
+    console = cfg["access"].get("debug_console", True)
     print("at boot: " + ("device" + (" with the debug console" if dev.get("console") else "")
-                         if plan and dev.get("start_at_boot") else "debug console"))
+                         if plan and dev.get("start_at_boot") else "debug console" if console else "nothing on USB"))
 
     step("manifest")
     text = manifest(card)

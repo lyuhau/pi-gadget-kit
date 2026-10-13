@@ -35,9 +35,9 @@ import zlib
 
 import build_card as bc
 
-# What image/init needs besides [system] packages.
-INIT_PACKAGES = ["alpine-baselayout", "busybox", "busybox-binsh", "dosfstools", "wpa_supplicant", "wireless-regdb",
-                 "openssh-server"]
+# What image/init needs besides [system] packages (and openssh-server, with
+# [access] ssh_public_key).
+INIT_PACKAGES = ["alpine-baselayout", "busybox", "busybox-binsh", "dosfstools", "wpa_supplicant", "wireless-regdb"]
 # alpine-base in [system] packages is diskless Alpine's base system: OpenRC,
 # apk-tools and alpine-conf, none of which run here. It's replaced by the
 # parts that still mean something: the release's identity (/etc/os-release)
@@ -492,7 +492,8 @@ def build(cfg, tarball, card, files, refetch, lock_path):
             wanted = wanted[:i] + BASE_KEEP + [p for p in wanted[i + 1:] if p != "alpine-base"]
             print("alpine-base left out: its OpenRC and apk-tools don't run in this image type "
                   f"(kept {', '.join(BASE_KEEP)})")
-        names = repos.resolve(INIT_PACKAGES + wanted)
+        init = INIT_PACKAGES + (["openssh-server"] if cfg["access"].get("ssh_public_key") else [])
+        names = repos.resolve(init + wanted)
         tree, scripts, lock = Tree(), [], []
         for n in names:
             control, data, digest, fname = repos.fetch(n)
