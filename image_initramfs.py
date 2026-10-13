@@ -414,8 +414,8 @@ def dep_order(name, direct):
     return post[-2::-1]  # reversed, without the module itself
 
 
-def add_modules(tree, kernel_tar, release, patched):
-    """The selected modules (uncompressed, so any modprobe loads them) with
+def add_modules(tree, kernel_tar, release, patched, extra_modules=()):
+    """The selected modules (MODULES and `extra_modules`) (uncompressed, so any modprobe loads them) with
     modules.dep/alias/softdep generated from their own modinfo."""
     base = f"lib/modules/{release}/"
     stock, extra = {}, {}
@@ -424,7 +424,7 @@ def add_modules(tree, kernel_tar, release, patched):
             stock[os.path.basename(m.name)[:-6].replace("-", "_")] = (m.name[len(base):-3], data)
         elif m.name in (base + "modules.builtin", base + "modules.builtin.modinfo"):
             extra[m.name] = data
-    wanted = MODULES + [n for n, (p, _) in stock.items() if p.startswith(tuple(MODULE_DIRS))]
+    wanted = MODULES + list(extra_modules) + [n for n, (p, _) in stock.items() if p.startswith(tuple(MODULE_DIRS))]
     mods = {}  # name -> (path, bytes, info)
     while wanted:
         n = wanted.pop().replace("-", "_")
@@ -465,6 +465,25 @@ def ssh_host_key(host):
         subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", f"root@{host}", "-f", key],
                        check=True)
     return open(key, "rb").read(), open(key + ".pub", "rb").read()
+
+
+def add_files(tree, files):
+    """The config's files for the Pi (path -> (mode, bytes)), over the packages'."""
+    for p, (mode, data) in sorted(files.items()):
+        d, missing = os.path.dirname(p), []
+        while d and d not in tree.entries:
+            missing.append(d)
+            d = os.path.dirname(d)
+        for d in reversed(missing):  # as in the diskless overlay
+            tree.dir(d, 0o700 if d.startswith("root") else 0o755)
+        tree.file(p, data, mode)
+
+
+def config_txt(cfg):
+    return ("arm_64bit=1\n"
+            f"kernel={KERNEL}\n"
+            f"initramfs {INITRD} followkernel\n"
+            "disable_splash=1\n" + "\n".join(bc.config_txt(cfg)) + "\n")
 
 
 def build(cfg, tarball, card, files, refetch, lock_path):
@@ -510,7 +529,7 @@ def build(cfg, tarball, card, files, refetch, lock_path):
         vmlinuz = next(d for m, d in tar_members(kernel) if m.name == "boot/vmlinuz-rpi")
         if vmlinuz != open(os.path.join(card, KERNEL), "rb").read():
             sys.exit(f"linux-rpi {ver}-r{pkgrel} isn't the release's kernel")
-        n = add_modules(tree, kernel, rel, kmods)
+        n = add_modules(tree, kernel, rel, kmods, (cfg.get("app") or {}).get("kmods", []))
         for pkg in ("linux-firmware-brcm", "linux-firmware-cypress"):
             _, data, digest, fname = repos.fetch(pkg)
             lock.append(f"{digest}  {fname}")
@@ -524,14 +543,7 @@ def build(cfg, tarball, card, files, refetch, lock_path):
     for d in ("proc", "sys", "dev", "run", "tmp", "media/mmcblk0p1"):
         tree.dir(d, 0o1777 if d == "tmp" else 0o755)
     tree.file("init", open(os.path.join(bc.REPO, "image", "init"), "rb").read(), 0o755)
-    for p, (mode, data) in sorted(files.items()):
-        d, missing = os.path.dirname(p), []
-        while d and d not in tree.entries:
-            missing.append(d)
-            d = os.path.dirname(d)
-        for d in reversed(missing):  # as in the diskless overlay
-            tree.dir(d, 0o700 if d.startswith("root") else 0o755)
-        tree.file(p, data, mode)
+    add_files(tree, files)
     if "openssh-server" in names:
         key, pub = ssh_host_key(s["hostname"])
         tree.file("etc/ssh/ssh_host_ed25519_key", key, 0o600)
@@ -544,10 +556,7 @@ def build(cfg, tarball, card, files, refetch, lock_path):
     with open(os.path.join(card, INITRD), "wb") as f:
         f.write(data)
     with open(os.path.join(card, "config.txt"), "w") as f:
-        f.write("arm_64bit=1\n"
-                f"kernel={KERNEL}\n"
-                f"initramfs {INITRD} followkernel\n"
-                "disable_splash=1\n" + "\n".join(bc.BOOT_CONFIG) + "\n")
+        f.write(config_txt(cfg))
     with open(os.path.join(card, "cmdline.txt"), "w") as f:
         f.write("console=tty1 rdinit=/init panic=5 quiet\n")
     print(f"{INITRD}: {len(tree.entries)} entries, {len(data) / 1e6:.1f} MB")

@@ -1,8 +1,9 @@
 #!/bin/busybox sh
 # PID 1 of the initramfs image ([image] type = "initramfs"). Everything is
 # already in RAM, so this only starts things: in the diskless image's order,
-# except that the watchdog comes first and Wi-Fi doesn't wait for the card.
-# Log: /var/log/boot.log.
+# except that the watchdog comes first. Log: /var/log/boot.log.
+# Order: modules, the device (/etc/local.d), the card, the app ([app]),
+# Wi-Fi and the clock, sshd.
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 mount -t proc proc /proc
 mount -t sysfs sys /sys
@@ -27,8 +28,9 @@ stop() {
 	trap '' TERM USR1 USR2
 	set -x
 	kill -TERM -1; sleep 1; kill -KILL -1
+	[ -f /etc/usb-gadget/app.sh ] && sh /etc/usb-gadget/app.sh stop
 	sync
-	umount /media/mmcblk0p1
+	umount /media/mmcblk0p1 || mount -o remount,ro /media/mmcblk0p1
 	"$1" -f
 }
 trap 'stop reboot' TERM
@@ -43,26 +45,36 @@ for i in $(seq 1 20); do [ -n "$(ls /sys/class/udc)" ] && break; sleep 0.1; done
 mount -t configfs none /sys/kernel/config
 for s in /etc/local.d/*.start; do [ -x "$s" ] && "$s"; done
 
+# The card, where diskless Alpine has it: read-only, for its files, unless
+# the app keeps state or logs there. The Pi never unmounts it (power just
+# goes), so check it first; -a repairs.
+APP_OWNS= STATE_ON_CARD= KEEP_LOGS=
+[ -f /etc/usb-gadget/app.env ] && . /etc/usb-gadget/app.env
+opts=ro
+[ -n "$STATE_ON_CARD$KEEP_LOGS" ] && opts=rw,noatime,flush
+for i in $(seq 1 25); do [ -b /dev/mmcblk0p1 ] && break; sleep 0.2; done
+mkdir -p /media/mmcblk0p1
+fsck.fat -a /dev/mmcblk0p1 >/var/log/fsck.log 2>&1
+mount -t vfat -o $opts /dev/mmcblk0p1 /media/mmcblk0p1
+
+# The app: right after the device, before Wi-Fi.
+[ -f /etc/usb-gadget/app.sh ] && sh /etc/usb-gadget/app.sh start
+
 # Wi-Fi, then the clock (no RTC: it starts at 1970). In the background:
 # wlan0 appears once the driver has loaded its firmware.
-# Without [access] wifi the platform leaves wlan0 alone.
+# Without [access] wifi (or with an app that owns it) the platform leaves
+# wlan0 alone; the clock, unless the app owns that.
 (
-	if [ -f /etc/wpa_supplicant/wpa_supplicant.conf ]; then
+	if [ -f /etc/wpa_supplicant/wpa_supplicant.conf ] && [ "${APP_OWNS#*wifi}" = "$APP_OWNS" ]; then
 		for i in $(seq 1 50); do [ -e /sys/class/net/wlan0 ] && break; sleep 0.2; done
 		wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf
 		udhcpc -b -i wlan0 -x hostname:"$(hostname)"
 	fi
-	if command -v chronyd; then chronyd; else ntpd -p pool.ntp.org; fi
+	if [ "${APP_OWNS#*time}" != "$APP_OWNS" ]; then :
+	elif command -v chronyd; then chronyd; else ntpd -p pool.ntp.org; fi
 ) >/var/log/wifi.log 2>&1 &
 
 [ -x /usr/sbin/sshd ] && [ -f /root/.ssh/authorized_keys ] && /usr/sbin/sshd
-
-# The card, where diskless Alpine has it: read-only, for its files. The Pi
-# never unmounts it (power just goes), so check it first; -a repairs.
-for i in $(seq 1 25); do [ -b /dev/mmcblk0p1 ] && break; sleep 0.2; done
-mkdir -p /media/mmcblk0p1
-fsck.fat -a /dev/mmcblk0p1 >/var/log/fsck.log 2>&1
-mount -t vfat -o ro /dev/mmcblk0p1 /media/mmcblk0p1
 
 echo "boot done"
 ) &

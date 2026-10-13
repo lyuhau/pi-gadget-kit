@@ -30,6 +30,8 @@ import gzip
 import hashlib
 import io
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -55,7 +57,12 @@ CONFIG_KEYS = {
     "system": {"hostname", "packages", "repositories"},
     "access": {"wifi", "ssh_public_key", "debug_console"},
     "device": {"description", "max_speed", "test_ids", "start_at_boot", "console"},
+    "app": {"name", "files", "overlay", "run", "owns", "state", "keep_logs", "config_txt", "kmods"},
 }
+# What an app can take over from the platform ([app] owns).
+OWNABLE = {"wifi", "time"}
+CARD = "/media/mmcblk0p1"  # the card's FAT partition on the Pi, in both image types
+GADGET = "/sys/kernel/config/usb_gadget/device"
 
 # Fixed plumbing rather than config: changing these mostly breaks Wi-Fi, SSH
 # or USB device mode.
@@ -111,6 +118,11 @@ def platform_wifi(cfg):
 def rel(path):
     """A path from the config: relative to the config file, ~ expanded."""
     return os.path.join(CONFIG_DIR, os.path.expanduser(path))
+
+
+def read(path):
+    with open(path, "rb") as f:
+        return f.read()
 
 
 def sha256(path):
@@ -185,7 +197,7 @@ def read_kmods(release):
         src = os.path.join(KMODS_DIR, m + ".ko")
         if not os.path.exists(src):
             sys.exit(f"{src} missing: run alpine-module/build.sh")
-        kmods[m] = open(src, "rb").read()
+        kmods[m] = read(src)
         if f"vermagic={release} ".encode() not in kmods[m]:
             sys.exit(f"{m}.ko wasn't built for this release's kernel {release}: rebuild with alpine-module/build.sh")
     print(f"{len(KMODS)} modules for kernel {release}")
@@ -266,6 +278,47 @@ def fetch_packages(cfg, card, refetch):
     return True
 
 
+def app_files(cfg):
+    """[app] overlay and files: path on the Pi -> (mode, bytes). Executable
+    sources stay executable; files wins over overlay."""
+    app = cfg.get("app") or {}
+    files = {}
+
+    def add(dest, src):
+        files[dest] = (0o755 if os.access(src, os.X_OK) else 0o644, read(src))
+
+    if app.get("overlay"):
+        top = rel(app["overlay"])
+        for root, dirs, names in os.walk(top):
+            dirs.sort()
+            for n in sorted(names):
+                if n != ".DS_Store":
+                    add(os.path.relpath(os.path.join(root, n), top), os.path.join(root, n))
+    for dest, src in (app.get("files") or {}).items():
+        add(os.path.normpath(dest.lstrip("/")), rel(src))
+    return files
+
+
+def app_env(cfg):
+    """/etc/usb-gadget/app.env: where things are, for the app (sourced by
+    app.sh before [app] run) and image/init. Shell syntax."""
+    app = cfg["app"]
+    name = app["name"]
+    env = [("APP_NAME", name), ("APP_RUN", app.get("run", "")), ("APP_OWNS", " ".join(app.get("owns", []))),
+           ("APP_STATE", f"/var/lib/{name}"), ("APP_LOG", "/var/log/app.log"),
+           ("CARD", CARD)]
+    if app.get("keep_logs"):
+        env.append(("APP_LOGS", f"{CARD}/logs"))
+    if cfg.get("device"):
+        env += [("GADGET", GADGET), ("GADGET_SH", "/etc/usb-gadget/gadget.sh"),
+                ("GADGET_FUNCTIONS", "/etc/usb-gadget/functions")]
+    env += [("STATE_ON_CARD", "1" if app.get("state") else ""), ("KEEP_LOGS", "1" if app.get("keep_logs") else ""),
+            ("APP_KMODS", " ".join(app.get("kmods", [])))]
+    return ("# [app] of the image config (build_card.py): sourced by app.sh, which\n"
+            "# exports it to [app] run, and by the initramfs image's init\n"
+            + "".join(f"{k}={shlex.quote(v) if v else ''}\n" for k, v in env))
+
+
 def config_files(cfg, plan):
     """Files for the Pi in both image types: image/overlay/ plus files made
     from the config. `plan` is make_plan's (plan, functions) or None.
@@ -278,7 +331,7 @@ def config_files(cfg, plan):
     for root, _, names in os.walk(src):
         for n in names:
             p = os.path.join(root, n)
-            files[os.path.relpath(p, src)] = (0o755 if os.access(p, os.X_OK) else 0o644, open(p, "rb").read())
+            files[os.path.relpath(p, src)] = (0o755 if os.access(p, os.X_OK) else 0o644, read(p))
     if not acc.get("debug_console", True):
         files.pop("etc/local.d/10-usb-console.start", None)
 
@@ -304,14 +357,26 @@ def config_files(cfg, plan):
         pubkey = open(os.path.expanduser(acc["ssh_public_key"])).read().strip()
         files["root/.ssh/authorized_keys"] = (0o600, (pubkey + "\n").encode())
     files["etc/usb-gadget/kmods.list"] = (0o644, (" ".join(KMODS) + "\n").encode())
-    files["etc/usb-gadget/pi_kmods.sh"] = (0o755, open(os.path.join(REPO, "alpine-module", "pi_kmods.sh"), "rb").read())
+    files["etc/usb-gadget/pi_kmods.sh"] = (0o755, read(os.path.join(REPO, "alpine-module", "pi_kmods.sh")))
     if plan:
-        files["etc/usb-gadget/gadget.sh"] = (0o755, open(os.path.join(REPO, "gadget.sh"), "rb").read())
+        files["etc/usb-gadget/gadget.sh"] = (0o755, read(os.path.join(REPO, "gadget.sh")))
         files["etc/usb-gadget/device.plan"] = (0o644, plan[0].encode())
         files["etc/usb-gadget/functions"] = (0o644, plan[1].encode())
         if cfg["device"].get("start_at_boot", False):
             files["etc/usb-gadget/start-at-boot"] = (0o644, b"")
+    if cfg.get("app"):
+        files["etc/usb-gadget/app.env"] = (0o644, app_env(cfg).encode())
+        files["etc/usb-gadget/app.sh"] = (0o755, read(os.path.join(REPO, "image", "app.sh")))
+        for p, f in app_files(cfg).items():
+            if p in files:
+                sys.exit(f"[app] {p} is one of the platform's files; put it elsewhere")
+            files[p] = f
     return files
+
+
+def config_txt(cfg):
+    """Lines for the firmware's config.txt (diskless: usercfg.txt)."""
+    return BOOT_CONFIG + list((cfg.get("app") or {}).get("config_txt", []))
 
 
 def services(cfg):
@@ -321,12 +386,17 @@ def services(cfg):
         drop.add("wpa_supplicant")
     if not cfg["access"].get("ssh_public_key"):
         drop.add("sshd")
+    if "time" in (cfg.get("app") or {}).get("owns", []):
+        drop.add("chronyd")
     return {level: [s for s in svcs if s not in drop] for level, svcs in SERVICES.items()}
 
 
 def overlay(cfg, plan, cached):
     s, host = cfg["system"], cfg["system"]["hostname"]
     files = config_files(cfg, plan)
+    if cfg.get("app"):  # (the initramfs image's init starts the app itself, once the card is mounted)
+        files["etc/local.d/90-app.start"] = (0o755, b"#!/bin/sh\nexec sh /etc/usb-gadget/app.sh start\n")
+        files["etc/local.d/90-app.stop"] = (0o755, b"#!/bin/sh\nexec sh /etc/usb-gadget/app.sh stop\n")
     gen = {
         "etc/apk/world": "\n".join(s["packages"]) + "\n",
         "etc/apk/repositories": "\n".join(["/media/mmcblk0p1/apks"] + s["repositories"]) + "\n",
@@ -435,8 +505,45 @@ def validate(cfg, path):
             sys.exit(f"{path}: [device] description {rel(dev['description'])} doesn't exist")
         if dev.get("console") and not cfg["access"].get("debug_console", True):
             sys.exit(f"{path}: [device] console needs [access] debug_console = true")
+    if cfg.get("app") is not None:
+        validate_app(cfg, path)
     if cfg.get("image", {}).get("type", "diskless") not in ("diskless", "initramfs"):
         sys.exit(f"{path}: [image] type is \"diskless\" or \"initramfs\"")
+
+
+def validate_app(cfg, path):
+    app = cfg["app"]
+
+    def bad(msg):
+        sys.exit(f"{path}: [app] {msg} (see README: Apps)")
+
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", app.get("name", "")) or app["name"] == "logs":
+        bad('name: lowercase letters, digits, "-" and "_" (not "logs"), e.g. name = "myapp"')
+    for key in ("run",):
+        if not isinstance(app.get(key, ""), str):
+            bad(f"{key} is a string")
+    for key in ("state", "keep_logs"):
+        if not isinstance(app.get(key, False), bool):
+            bad(f"{key} is true or false")
+    for key in ("owns", "config_txt", "kmods"):
+        v = app.get(key, [])
+        if not isinstance(v, list) or not all(isinstance(x, str) and x and "\n" not in x for x in v):
+            bad(f"{key} is a list of strings")
+    if set(app.get("owns", [])) - OWNABLE:
+        bad(f"owns: only {', '.join(sorted(OWNABLE))}")
+    if "wifi" in app.get("owns", []) and cfg["access"].get("wifi"):
+        bad("owns wifi: leave [access] wifi out (or empty)")
+    if app.get("overlay") and not os.path.isdir(rel(app["overlay"])):
+        bad(f"overlay {rel(app['overlay'])} isn't a folder")
+    files = app.get("files", {})
+    if not isinstance(files, dict):
+        bad('files is a table: { "path/on/pi" = "source" }')
+    for dest, src in files.items():
+        d = os.path.normpath(dest.lstrip("/"))
+        if d.startswith("..") or d == "." or not isinstance(src, str):
+            bad(f"files: {dest!r} = {src!r}")
+        if not os.path.isfile(rel(src)):
+            bad(f"files: {rel(src)} doesn't exist")
 
 
 def main():
@@ -478,7 +585,7 @@ def main():
         with open(os.path.join(card, name), "wb") as f:
             f.write(data)
         with open(os.path.join(card, "usercfg.txt"), "w") as f:
-            f.write("\n".join(BOOT_CONFIG) + "\n")
+            f.write("\n".join(config_txt(cfg)) + "\n")
         print(f"{name}: {n} files")
     dev = cfg.get("device") or {}
     console = cfg["access"].get("debug_console", True)
