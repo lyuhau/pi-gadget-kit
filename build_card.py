@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Build the Pi's SD card contents from an image config (image/usbpi.toml).
+Build the Pi's SD card contents from an image config (image/pi.toml).
 
-  build_card.py image/usbpi.toml                          # -> out/card-<hostname>/
-  build_card.py image/usbpi.toml --install /Volumes/ALPINE
-  build_card.py image/usbpi.toml --refetch                # re-download cached packages
+  build_card.py image/pi.toml                          # -> out/card-<hostname>/
+  build_card.py image/pi.toml --install /Volumes/ALPINE
+  build_card.py image/pi.toml --refetch                # re-download cached packages
 
 Steps:
   1. Alpine release tarball, verified against [alpine] sha256 (cached in out/cache/)
@@ -115,7 +115,7 @@ def make_plans(cfg):
     patched = bool(cfg.get("kernel_modules"))
     os.makedirs(os.path.join(REPO, "gadgets"), exist_ok=True)
     for name, g in cfg.get("gadgets", {}).items():
-        text, p = gadget_plan.plan_from_file(rel(g["capture"]), patched=patched,
+        text, p = gadget_plan.plan_from_file(rel(g["capture"]), name=name, patched=patched,
                                              max_speed=g.get("max_speed") or None,
                                              test_ids=g.get("test_ids", False))
         text = text.replace(f"from {rel(g['capture'])}", f"from {g['capture']}")
@@ -214,13 +214,13 @@ def overlay(cfg, plans, kmods, cached):
         "}\n").encode())
     files["root/.ssh/authorized_keys"] = (0o600, (pubkey + "\n").encode())
     if kmods:
-        files["etc/usbpi/kmods.list"] = (0o644, (" ".join(kmods) + "\n").encode())
-        files["etc/usbpi/pi_kmods.sh"] = (0o755, open(os.path.join(REPO, "alpine-module", "pi_kmods.sh"), "rb").read())
+        files["etc/usb-gadget/kmods.list"] = (0o644, (" ".join(kmods) + "\n").encode())
+        files["etc/usb-gadget/pi_kmods.sh"] = (0o755, open(os.path.join(REPO, "alpine-module", "pi_kmods.sh"), "rb").read())
     if plans:
-        files["etc/usbpi/gadget.sh"] = (0o755, open(os.path.join(REPO, "gadget.sh"), "rb").read())
+        files["etc/usb-gadget/gadget.sh"] = (0o755, open(os.path.join(REPO, "gadget.sh"), "rb").read())
         for name, text in plans.items():
-            files[f"etc/usbpi/gadgets/{name}.plan"] = (0o644, text.encode())
-    files["etc/usbpi/boot-gadget"] = (0o644, (cfg.get("boot", {}).get("gadget", "") + "\n").encode())
+            files[f"etc/usb-gadget/gadgets/{name}.plan"] = (0o644, text.encode())
+    files["etc/usb-gadget/boot-gadget"] = (0o644, (cfg.get("boot", {}).get("gadget", "") + "\n").encode())
 
     links = {f"etc/runlevels/{level}/{svc}": f"/etc/init.d/{svc}"
              for level, svcs in cfg["services"].items() for svc in svcs}

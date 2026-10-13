@@ -8,8 +8,8 @@ mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
 mkdir -p $G/strings/0x409 $G/configs/c.1 $G/functions/acm.0
 echo 0x1d6b > $G/idVendor
 echo 0x0104 > $G/idProduct
-echo usbpi > $G/strings/0x409/manufacturer
-echo "usbpi console" > $G/strings/0x409/product
+cat /etc/hostname > $G/strings/0x409/manufacturer
+echo "debug console" > $G/strings/0x409/product
 ln -s $G/functions/acm.0 $G/configs/c.1/
 ls /sys/class/udc | head -n 1 > $G/UDC
 # root shell without a login prompt (busybox login refuses root on ttyGS0)

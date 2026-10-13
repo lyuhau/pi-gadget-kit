@@ -13,7 +13,7 @@ arch = "aarch64"
 sha256 = "60e6b9f49ec3d2c9660f2ef775f5af3a98cfd2f939c8f55b6f215d00e5ffcb87"
 
 [system]
-hostname = "usbpi"
+hostname = "usb-gadget"
 # Installed at every boot (Alpine runs diskless from RAM): from the card's
 # bundled apks/, and for anything Alpine doesn't bundle, from the card's cache/
 # that build_card.py fills (recorded in image/packages.lock).

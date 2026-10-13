@@ -10,9 +10,9 @@ if [ ! -d "$BR" ]; then
 fi
 export BR2_DL_DIR=/work/dl
 if [ ! -f "$OUT/.config" ] || [ "${RECONFIGURE:-0}" = 1 ]; then
-    make -C "$BR" O="$OUT" BR2_EXTERNAL=/repo/buildroot usbpi_zero2w_defconfig
+    make -C "$BR" O="$OUT" BR2_EXTERNAL=/repo/buildroot zero2w_usb_gadget_defconfig
 fi
 make -C "$BR" O="$OUT" "$@"
 mkdir -p /repo/out
-cp "$OUT/images/sdcard.img" /repo/out/usbpi-buildroot.img
-ls -lh /repo/out/usbpi-buildroot.img
+cp "$OUT/images/sdcard.img" /repo/out/usb-gadget-buildroot.img
+ls -lh /repo/out/usb-gadget-buildroot.img

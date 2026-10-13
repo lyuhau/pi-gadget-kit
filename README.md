@@ -58,7 +58,7 @@ macOS version, which crashes pip.
    you've captured:
 
    ```bash
-   cp image/template.toml image/usbpi.toml          # image/*.toml besides the template are gitignored
+   cp image/template.toml image/pi.toml          # image/*.toml besides the template are gitignored
    ```
 
    ```toml
@@ -80,7 +80,7 @@ macOS version, which crashes pip.
 ## Build and install the card
 
 ```bash
-.venv/bin/python build_card.py image/usbpi.toml        # -> out/card-<hostname>/ + manifest
+.venv/bin/python build_card.py image/pi.toml        # -> out/card-<hostname>/ + manifest
 ```
 
 To get the card onto the Mac without a card reader:
@@ -104,7 +104,7 @@ diskutil eraseDisk FAT32 ALPINE MBRFormat /dev/diskN
 Then install, which replaces the card's contents and verifies every file:
 
 ```bash
-.venv/bin/python build_card.py image/usbpi.toml --install /Volumes/ALPINE
+.venv/bin/python build_card.py image/pi.toml --install /Volumes/ALPINE
 ```
 
 Eject the card and replug the Pi with the card in. It boots in about 30
@@ -122,9 +122,9 @@ show up as a diff.
 ## Run a gadget
 
 ```bash
-ssh root@<pi> sh /etc/usbpi/gadget.sh up /etc/usbpi/gadgets/mydevice.plan
-ssh root@<pi> sh /etc/usbpi/gadget.sh down clone       # plans name the gadget "clone"; back to the debug console
-ssh root@<pi> sh /etc/usbpi/gadget.sh list
+ssh root@<pi> sh /etc/usb-gadget/gadget.sh up /etc/usb-gadget/gadgets/mydevice.plan
+ssh root@<pi> sh /etc/usb-gadget/gadget.sh down mydevice    # back to the debug console
+ssh root@<pi> sh /etc/usb-gadget/gadget.sh list
 ```
 
 To check that the host sees what the capture describes, use usb-capture's
@@ -141,7 +141,7 @@ for the mic direction.
 - **Plans:** run `gadget_plan.py CAPTURE -o x.plan`, copy it to the Pi, then
   run `gadget.sh up x.plan`.
 - **Modules:** copy `out/modules/*.ko` to the Pi, then run
-  `sh /etc/usbpi/pi_kmods.sh swap DIR`.
+  `sh /etc/usb-gadget/pi_kmods.sh swap DIR`.
 
 Changes made on the Pi itself are lost at reboot unless saved with
 `lbu commit`. Better to put them in the image config.

@@ -22,6 +22,7 @@ Plan format, one operation per line ("#" lines are comments):
 """
 import argparse
 import json
+import os
 import sys
 
 MODEL_FORMAT = 1  # usb-capture's capture_usb.MODEL_FORMAT
@@ -182,7 +183,7 @@ def plan_hid(p, fn, inst):
     return True
 
 
-def build_plan(model, name="clone", patched=True, max_speed=None, test_ids=False):
+def build_plan(model, name="gadget", patched=True, max_speed=None, test_ids=False):
     if model.get("format") != MODEL_FORMAT:
         sys.exit(f"capture model format {model.get('format')} != {MODEL_FORMAT}: "
                  "run usb-capture's capture_usb.py refresh, or update gadget_plan.py")
@@ -248,7 +249,7 @@ def pick(devs, index):
     return next((d for d in devs if d["device_descriptor"]["bDeviceClass"] != 9), devs[0])
 
 
-def plan_from_file(capture, name="clone", device=None, patched=True, max_speed=None, test_ids=False):
+def plan_from_file(capture, name="gadget", device=None, patched=True, max_speed=None, test_ids=False):
     with open(capture) as f:
         model = pick(json.load(f)["devices"], device)["model"]
     p = build_plan(model, name, patched, max_speed, test_ids)
@@ -261,13 +262,14 @@ def main():
     a = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     a.add_argument("capture")
     a.add_argument("-o", "--output", help="plan file (default: stdout)")
-    a.add_argument("--name", default="clone", help="gadget directory name (default: clone)")
+    a.add_argument("--name", help="gadget directory name (default: the output file's name, or \"gadget\")")
     a.add_argument("--device", type=int, help="which device in the capture (default: first non-hub)")
     a.add_argument("--stock", action="store_true", help="plan for unpatched gadget modules")
     a.add_argument("--max-speed", choices=["full-speed", "high-speed"], help="override the captured speed")
     a.add_argument("--test-ids", action="store_true", help="use test VID:PID 1209:0001")
     args = a.parse_args()
-    text, p = plan_from_file(args.capture, args.name, args.device, not args.stock, args.max_speed, args.test_ids)
+    name = args.name or (os.path.splitext(os.path.basename(args.output))[0] if args.output else "gadget")
+    text, p = plan_from_file(args.capture, name, args.device, not args.stock, args.max_speed, args.test_ids)
     if args.output:
         with open(args.output, "w") as f:
             f.write(text)

@@ -11,7 +11,7 @@ DIR=${2:-/media/mmcblk0p1/kmods}
 CFS=/sys/kernel/config/usb_gadget
 # dependency order: libcomposite first, functions last ([kernel_modules] load
 # in the image config, written to kmods.list by build_card.py)
-MODS=$(cat /etc/usbpi/kmods.list 2>/dev/null || echo "libcomposite u_audio u_serial usb_f_acm usb_f_uac1 usb_f_hid")
+MODS=$(cat /etc/usb-gadget/kmods.list 2>/dev/null || echo "libcomposite u_audio u_serial usb_f_acm usb_f_uac1 usb_f_hid")
 
 stop_console_shell() {
 	# A process holding ttyGS0 open makes removing the acm function hang.

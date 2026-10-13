@@ -1,2 +1,2 @@
-name: USBPI
+name: USB_GADGET
 desc: Raspberry Pi Zero 2 W as a cloneable USB device
