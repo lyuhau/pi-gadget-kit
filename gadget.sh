@@ -156,6 +156,8 @@ set_attrs() {
 		esac
 	done < "$RUNPLAN"
 	if [ -n "$udc" ]; then
+		# a moment between unbind and bind: dwc2 seemed to need it (audiolink's experience)
+		sleep 0.2
 		echo "$udc" > "$g/UDC" || failed=1
 		net_up "$g"
 	fi
