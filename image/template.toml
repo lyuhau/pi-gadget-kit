@@ -53,13 +53,12 @@ debug_console = true     # USB serial root shell until a gadget takes the port
 dir = "out/modules"
 load = ["libcomposite", "u_audio", "u_serial", "usb_f_acm", "usb_f_uac1", "usb_f_hid"]
 
-# Gadgets: a usb-capture capture (what the device looks like; ~/Code/usb-capture) plus
-# gadget_plan.py options (how to clone it). build_card.py combines them into
-# gadgets/<name>.plan (gitignored) and puts the plan on the card.
-# [gadgets.mydevice]
-# capture = "../usb-capture/captures/mydevice.json"   # relative to this repo
-# max_speed = ""     # "" = as captured, or "full-speed" / "high-speed"
-# test_ids = false   # true: VID:PID 1209:0001 instead of the captured IDs
-
-[boot]
-gadget = ""        # a [gadgets] name to start at boot; "" = debug console only
+# The USB device the Pi presents (it can be composite: several interfaces).
+# description: a device description JSON in usb-capture's format; capture a
+# real device with ~/Code/usb-capture and copy the file here, or write one.
+# Remove this section for a Pi that only offers the debug console.
+[device]
+description = "device.json"   # relative to this repo (/device.json is gitignored)
+max_speed = ""         # "" = as described, or "full-speed" / "high-speed"
+test_ids = false       # true: VID:PID 1209:0001 instead of the described IDs
+start_at_boot = false  # false: boot to the debug console; start it with gadget.sh up

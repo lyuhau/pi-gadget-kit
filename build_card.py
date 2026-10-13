@@ -9,7 +9,7 @@ Build the Pi's SD card contents from an image config (image/pi.toml).
 Steps:
   1. Alpine release tarball, verified against [alpine] sha256 (cached in out/cache/)
   2. patched kernel modules from [kernel_modules], checked against its kernel
-  3. gadget plans from [gadgets], written to gadgets/<name>.plan and the card
+  3. the [device] plan, written to device.plan and the card
   4. packages Alpine doesn't bundle, downloaded into the card's apk cache via
      Docker; their files and hashes go in image/packages.lock
   5. the apkovl overlay: image/overlay/ plus files generated from the config
@@ -110,28 +110,25 @@ def copy_kmods(cfg, card):
     return km["load"]
 
 
-def make_plans(cfg):
-    plans = {}
-    patched = bool(cfg.get("kernel_modules"))
-    os.makedirs(os.path.join(REPO, "gadgets"), exist_ok=True)
-    for name, g in cfg.get("gadgets", {}).items():
-        text, p = gadget_plan.plan_from_file(rel(g["capture"]), name=name, patched=patched,
-                                             max_speed=g.get("max_speed") or None,
-                                             test_ids=g.get("test_ids", False))
-        text = text.replace(f"from {rel(g['capture'])}", f"from {g['capture']}")
-        path = os.path.join(REPO, "gadgets", f"{name}.plan")
-        old = open(path).read() if os.path.exists(path) else None
-        with open(path, "w") as f:
-            f.write(text)
-        state = "unchanged" if old == text else "updated" if old else "new"
-        print(f"gadgets/{name}.plan: {len(p.ops)} operations ({state})")
-        for n in p.notes:
-            print(f"  note: {n}")
-        plans[name] = text
-    boot = cfg.get("boot", {}).get("gadget", "")
-    if boot and boot not in plans:
-        sys.exit(f"[boot] gadget '{boot}' isn't defined under [gadgets]")
-    return plans
+def make_plan(cfg):
+    """The [device] description plus its options -> the configfs plan."""
+    dev = cfg.get("device")
+    if not dev:
+        print("no [device]: the Pi only offers the debug console")
+        return None
+    text, p = gadget_plan.plan_from_file(rel(dev["description"]), patched=bool(cfg.get("kernel_modules")),
+                                         max_speed=dev.get("max_speed") or None,
+                                         test_ids=dev.get("test_ids", False))
+    text = text.replace(f"from {rel(dev['description'])}", f"from {dev['description']}")
+    path = os.path.join(REPO, "device.plan")
+    old = open(path).read() if os.path.exists(path) else None
+    with open(path, "w") as f:
+        f.write(text)
+    state = "unchanged" if old == text else "updated" if old else "new"
+    print(f"device.plan: {len(p.ops)} operations ({state})")
+    for n in p.notes:
+        print(f"  note: {n}")
+    return text
 
 
 def bundled_packages(card, arch):
@@ -179,7 +176,7 @@ def fetch_packages(cfg, card, refetch):
     return True
 
 
-def overlay(cfg, plans, kmods, cached):
+def overlay(cfg, plan, kmods, cached):
     s, acc = cfg["system"], cfg["access"]
     wifi = read_wifi(rel(acc["wifi"]))
     pubkey = open(os.path.expanduser(acc["ssh_public_key"])).read().strip()
@@ -216,11 +213,11 @@ def overlay(cfg, plans, kmods, cached):
     if kmods:
         files["etc/usb-gadget/kmods.list"] = (0o644, (" ".join(kmods) + "\n").encode())
         files["etc/usb-gadget/pi_kmods.sh"] = (0o755, open(os.path.join(REPO, "alpine-module", "pi_kmods.sh"), "rb").read())
-    if plans:
+    if plan:
         files["etc/usb-gadget/gadget.sh"] = (0o755, open(os.path.join(REPO, "gadget.sh"), "rb").read())
-        for name, text in plans.items():
-            files[f"etc/usb-gadget/gadgets/{name}.plan"] = (0o644, text.encode())
-    files["etc/usb-gadget/boot-gadget"] = (0o644, (cfg.get("boot", {}).get("gadget", "") + "\n").encode())
+        files["etc/usb-gadget/device.plan"] = (0o644, plan.encode())
+        if cfg["device"].get("start_at_boot", False):
+            files["etc/usb-gadget/start-at-boot"] = (0o644, b"")
 
     links = {f"etc/runlevels/{level}/{svc}": f"/etc/init.d/{svc}"
              for level, svcs in cfg["services"].items() for svc in svcs}
@@ -308,6 +305,15 @@ def validate(cfg, path):
     wifi = rel(cfg["access"]["wifi"])
     if not os.path.exists(wifi):
         sys.exit(f"{path}: [access] wifi file {wifi} doesn't exist")
+    if "gadgets" in cfg or "boot" in cfg:
+        sys.exit(f"{path}: [gadgets.*] and [boot] were replaced by a single [device] section "
+                 "(see image/template.toml)")
+    dev = cfg.get("device")
+    if dev is not None:
+        if "description" not in dev:
+            sys.exit(f"{path}: [device] needs description = \"<file>.json\"")
+        if not os.path.exists(rel(dev["description"])):
+            sys.exit(f"{path}: [device] description {rel(dev['description'])} doesn't exist")
 
 
 def main():
@@ -330,17 +336,18 @@ def main():
     print(f"alpine-rpi {cfg['alpine']['version']} {cfg['alpine']['arch']}, kernel {kernel_release(card)}")
     step("kernel modules")
     kmods = copy_kmods(cfg, card)
-    step("gadget plans")
-    plans = make_plans(cfg)
+    step("device plan")
+    plan = make_plan(cfg)
     step("packages")
     cached = fetch_packages(cfg, card, a.refetch)
     step("overlay")
-    name, data, n = overlay(cfg, plans, kmods, cached)
+    name, data, n = overlay(cfg, plan, kmods, cached)
     with open(os.path.join(card, name), "wb") as f:
         f.write(data)
     with open(os.path.join(card, "usercfg.txt"), "w") as f:
         f.write("\n".join(cfg["system"]["boot_config"]) + "\n")
-    print(f"{name}: {n} files; boot gadget: {cfg.get('boot', {}).get('gadget') or 'none (debug console)'}")
+    at_boot = "device" if plan and cfg["device"].get("start_at_boot") else "debug console"
+    print(f"{name}: {n} files; at boot: {at_boot}")
 
     step("manifest")
     text = manifest(card)

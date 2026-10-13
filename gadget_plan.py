@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """
-Turn a usb-capture capture (capture_usb.py, ~/Code/usb-capture) into a gadget plan: the exact configfs
+Turn a device description into a gadget plan: the exact configfs
 directories, attribute writes and links that make a Linux USB gadget present
-itself like the captured device. gadget.sh replays a plan on the Pi.
+itself as described. gadget.sh replays a plan on the Pi.
 
-  gadget_plan.py ../usb-capture/captures/mydevice.json -o gadgets/mydevice.plan
-  gadget_plan.py CAPTURE --max-speed high-speed --test-ids
-  gadget_plan.py CAPTURE --stock     # for unpatched gadget modules
+  gadget_plan.py device.json -o device.plan
+  gadget_plan.py device.json --max-speed high-speed --test-ids
+  gadget_plan.py device.json --stock     # for unpatched gadget modules
 
-Only the capture's "model" is read (usb-capture README: Capture format). Plans are
+A device description is a JSON in usb-capture's format (capture_usb.py,
+~/Code/usb-capture): capture a real device and copy the file here, or write
+one.
+
+Only the description's "model" is read (usb-capture README: Capture format). Plans are
 deterministic, so they can be committed and diffed.
 
 Plan format, one operation per line ("#" lines are comments):
@@ -22,7 +26,6 @@ Plan format, one operation per line ("#" lines are comments):
 """
 import argparse
 import json
-import os
 import sys
 
 MODEL_FORMAT = 1  # usb-capture's capture_usb.MODEL_FORMAT
@@ -112,7 +115,7 @@ def plan_audio(p, fn, inst, speed):
         name(f"{base}/{pfx}_{usb_side}_name", st["usb_terminal_name"])
         name(f"{base}/{pfx}_fu_vol_name", st["fu_name"])
         if patched:
-            name(f"{base}/{pfx}_it_ch_name", None)  # channel names aren't captured
+            name(f"{base}/{pfx}_it_ch_name", None)  # the description has no channel names
             name(f"{base}/{pfx}_alt0_name", st["alt_names"].get("0"))
             name(f"{base}/{pfx}_alt1_name", st["alt_names"].get("1"))
             p.write(f"{base}/{pfx}_max_packet_size", a["wMaxPacketSize"])
@@ -163,7 +166,7 @@ def plan_strings(p, strings, dev):
 def plan_hid(p, fn, inst):
     base = f"functions/{inst}"
     if not fn["report_desc"]:
-        p.note(f"HID interface {fn['interface']}: no report descriptor captured, skipped")
+        p.note(f"HID interface {fn['interface']}: no report descriptor in the description, skipped")
         return False
     p.mkdir(base)
     p.write(f"{base}/protocol", fn["protocol"])
@@ -183,9 +186,9 @@ def plan_hid(p, fn, inst):
     return True
 
 
-def build_plan(model, name="gadget", patched=True, max_speed=None, test_ids=False):
+def build_plan(model, name="device", patched=True, max_speed=None, test_ids=False):
     if model.get("format") != MODEL_FORMAT:
-        sys.exit(f"capture model format {model.get('format')} != {MODEL_FORMAT}: "
+        sys.exit(f"description model format {model.get('format')} != {MODEL_FORMAT}: "
                  "run usb-capture's capture_usb.py refresh, or update gadget_plan.py")
     p = Plan(name, patched)
     dv = model["device"]
@@ -249,27 +252,26 @@ def pick(devs, index):
     return next((d for d in devs if d["device_descriptor"]["bDeviceClass"] != 9), devs[0])
 
 
-def plan_from_file(capture, name="gadget", device=None, patched=True, max_speed=None, test_ids=False):
-    with open(capture) as f:
-        model = pick(json.load(f)["devices"], device)["model"]
+def plan_from_file(description, name="device", index=None, patched=True, max_speed=None, test_ids=False):
+    with open(description) as f:
+        model = pick(json.load(f)["devices"], index)["model"]
     p = build_plan(model, name, patched, max_speed, test_ids)
     options = (f"name={name} target={'patched' if patched else 'stock'} "
-               f"max_speed={max_speed or 'as-captured'} test_ids={'yes' if test_ids else 'no'}")
-    return render(p, capture, options), p
+               f"max_speed={max_speed or 'as-described'} test_ids={'yes' if test_ids else 'no'}")
+    return render(p, description, options), p
 
 
 def main():
     a = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    a.add_argument("capture")
+    a.add_argument("description", help="device description JSON")
     a.add_argument("-o", "--output", help="plan file (default: stdout)")
-    a.add_argument("--name", help="gadget directory name (default: the output file's name, or \"gadget\")")
-    a.add_argument("--device", type=int, help="which device in the capture (default: first non-hub)")
+    a.add_argument("--name", default="device", help="gadget directory name (default: device)")
+    a.add_argument("--index", type=int, help="which device in the file (default: first non-hub)")
     a.add_argument("--stock", action="store_true", help="plan for unpatched gadget modules")
-    a.add_argument("--max-speed", choices=["full-speed", "high-speed"], help="override the captured speed")
+    a.add_argument("--max-speed", choices=["full-speed", "high-speed"], help="override the described speed")
     a.add_argument("--test-ids", action="store_true", help="use test VID:PID 1209:0001")
     args = a.parse_args()
-    name = args.name or (os.path.splitext(os.path.basename(args.output))[0] if args.output else "gadget")
-    text, p = plan_from_file(args.capture, name, args.device, not args.stock, args.max_speed, args.test_ids)
+    text, p = plan_from_file(args.description, args.name, args.index, not args.stock, args.max_speed, args.test_ids)
     if args.output:
         with open(args.output, "w") as f:
             f.write(text)

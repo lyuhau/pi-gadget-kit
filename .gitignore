@@ -8,6 +8,6 @@ buildroot/local/
 out/
 image/*.toml
 !image/template.toml
-# device captures and the plans generated from them (your devices, not the repo's)
+# the device description and its generated plan (yours, not the template's)
 /*.json
-/gadgets/
+/device.plan

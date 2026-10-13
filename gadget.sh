@@ -1,13 +1,15 @@
 #!/bin/sh
 # Apply a gadget plan (made by gadget_plan.py on the Mac) on the Pi. BusyBox sh.
 #
-#   gadget.sh up PLAN     create the gadget and attach it to the USB port,
-#                         unbinding whatever gadget held it (e.g. the console)
-#   gadget.sh down NAME   detach and remove it; rebind what it displaced
-#   gadget.sh list        gadgets and the port they're bound to
+#   gadget.sh up [PLAN]    create the gadget and attach it to the USB port,
+#                          unbinding whatever gadget held it (e.g. the console)
+#   gadget.sh down [NAME]  detach and remove it; rebind what it displaced
+#   gadget.sh list         gadgets and the port they're bound to
+# Defaults: the card's plan (/etc/usb-gadget/device.plan) and its gadget, "device".
 set -e
 CFS=/sys/kernel/config/usb_gadget
 DISPLACED=/run/gadget.displaced
+PLAN=/etc/usb-gadget/device.plan
 
 die() { echo "gadget.sh: $*" >&2; exit 1; }
 
@@ -72,7 +74,6 @@ up() {
 }
 
 down() {
-	[ -n "$1" ] || die "usage: gadget.sh down NAME"
 	remove "$1"
 	echo "removed gadget '$1'"
 	[ -f "$DISPLACED" ] || return 0
@@ -85,11 +86,11 @@ down() {
 }
 
 case "$1" in
-up) up "$2" ;;
-down) down "$2" ;;
+up) up "${2:-$PLAN}" ;;
+down) down "${2:-device}" ;;
 list)
 	for g in "$CFS"/*/; do
 		[ -d "$g" ] && echo "$(basename "$g"): $(cat "$g/UDC")"
 	done ;;
-*) echo "usage: gadget.sh up PLAN | down NAME | list" >&2; exit 2 ;;
+*) echo "usage: gadget.sh up [PLAN] | down [NAME] | list" >&2; exit 2 ;;
 esac

@@ -1,4 +1,4 @@
 #!/bin/sh
-# Start the gadget named in /etc/usb-gadget/boot-gadget ([boot] gadget in the image config).
-[ -s /etc/usb-gadget/boot-gadget ] || exit 0
-sh /etc/usb-gadget/gadget.sh up "/etc/usb-gadget/gadgets/$(cat /etc/usb-gadget/boot-gadget).plan" > /run/gadget.log 2>&1
+# Start the device at boot if the image config says so ([device] start_at_boot).
+[ -f /etc/usb-gadget/start-at-boot ] || exit 0
+sh /etc/usb-gadget/gadget.sh up > /run/gadget.log 2>&1
