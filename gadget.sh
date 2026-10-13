@@ -7,31 +7,26 @@
 #   gadget.sh list         gadgets and the port they're bound to
 #   gadget.sh remove NAME  remove a gadget without rebinding anything
 # Defaults: the card's plan (/etc/usb-gadget/device.plan) and its gadget, "device".
+# A plan with a "console" operation ([device] console) gets the debug
+# console's shell on that function's serial port.
 set -e
 CFS=/sys/kernel/config/usb_gadget
 DISPLACED=/run/gadget.displaced
 PLAN=/etc/usb-gadget/device.plan
+CONSOLE=/etc/usb-gadget/console.sh
 
 die() { echo "gadget.sh: $*" >&2; exit 1; }
 
-release_ttys() {
-	# A process holding a gadget serial port open (the debug console's shell)
-	# makes removing its acm function hang. Each step tolerates "already gone".
-	if [ -f /run/usb-console.pid ]; then
-		kill "$(cat /run/usb-console.pid)" 2>/dev/null || true
-		rm -f /run/usb-console.pid
-	fi
-	for t in /dev/ttyGS*; do
-		[ -e "$t" ] && { fuser -k "$t" >/dev/null 2>&1 || true; }
-	done
-	return 0
-}
 
 remove() {
 	g="$CFS/$1"
 	[ -d "$g" ] || return 0
 	echo > "$g/UDC" 2>/dev/null || true
-	for f in "$g"/functions/acm.*; do [ -d "$f" ] && release_ttys; done
+	# A process holding an acm function's serial port open (a debug console
+	# shell) makes removing the function hang. Other gadgets' ports stay.
+	for f in "$g"/functions/acm.*; do
+		[ -d "$f" ] && sh "$CONSOLE" stop "ttyGS$(cat "$f/port_num")"
+	done
 	for c in "$g"/configs/*/; do
 		[ -d "$c" ] || continue
 		find "$c" -maxdepth 1 -type l -exec rm {} \;
@@ -53,6 +48,7 @@ up() {
 	remove "$name"
 	g="$CFS/$name"
 	mkdir "$g"
+	console=
 	while IFS= read -r line; do
 		op=${line%% *}
 		rest=${line#"$op"}; rest=${rest# }
@@ -70,6 +66,7 @@ up() {
 			fi ;;
 		hex) printf '%s' "$value" | xxd -r -p > "$g/$path" || die "hex $path failed" ;;
 		link) ln -s "$g/$path" "$g/$value" ;;
+		console) console=$path ;;
 		*) die "unknown plan operation: $line" ;;
 		esac
 	done < "$plan"
@@ -86,6 +83,11 @@ up() {
 	done
 	echo "$udc" > "$g/UDC"
 	echo "gadget '$name' up on $udc"
+	if [ -n "$console" ]; then
+		tty=ttyGS$(cat "$g/$console/port_num")
+		sh "$CONSOLE" start "$tty"
+		echo "debug console on $tty"
+	fi
 }
 
 down() {

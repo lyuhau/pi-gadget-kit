@@ -12,7 +12,8 @@ to the config file.
 Steps:
   1. Alpine release tarball, verified against [alpine] sha256 (cached in out/cache/)
   2. the patched gadget modules (out/modules/), checked against its kernel
-  3. the [device] plan, written to out/device.plan and the card
+  3. the [device] plan, written to out/device.plan and the card (with the
+     list of its functions, /etc/usb-gadget/functions)
   4. packages Alpine doesn't bundle, downloaded into the card's apk cache via
      Docker; their files and hashes go in packages.lock next to the config
   5. the apkovl overlay: image/overlay/ plus files generated from the config
@@ -53,7 +54,7 @@ CONFIG_KEYS = {
     "alpine": {"version", "arch", "sha256"},
     "system": {"hostname", "packages", "repositories"},
     "access": {"wifi", "ssh_public_key", "debug_console"},
-    "device": {"description", "max_speed", "test_ids", "start_at_boot"},
+    "device": {"description", "max_speed", "test_ids", "start_at_boot", "console"},
 }
 
 # Fixed plumbing rather than config: changing these mostly breaks Wi-Fi, SSH
@@ -169,13 +170,14 @@ def copy_kmods(card, kmods):
 
 
 def make_plan(cfg):
-    """The [device] description plus its options -> the configfs plan."""
+    """The [device] description plus its options -> the configfs plan and
+    the list of its functions (gadget_plan.functions_text)."""
     dev = cfg.get("device")
     if not dev:
         print("no [device]: the Pi only offers the debug console")
         return None
     text, p = gadget_plan.plan_from_file(rel(dev["description"]), max_speed=dev.get("max_speed") or None,
-                                         test_ids=dev.get("test_ids", False))
+                                         test_ids=dev.get("test_ids", False), console=dev.get("console", False))
     text = text.replace(f"from {rel(dev['description'])}", f"from {dev['description']}")
     path = os.path.join(OUT, "device.plan")
     old = open(path).read() if os.path.exists(path) else None
@@ -185,7 +187,7 @@ def make_plan(cfg):
     print(f"out/device.plan: {len(p.ops)} operations ({state})")
     for n in p.notes:
         print(f"  note: {n}")
-    return text
+    return text, gadget_plan.functions_text(p)
 
 
 def bundled_packages(card, arch):
@@ -235,7 +237,8 @@ def fetch_packages(cfg, card, refetch):
 
 def config_files(cfg, plan):
     """Files for the Pi in both image types: image/overlay/ plus files made
-    from the config. path -> (mode, bytes)"""
+    from the config. `plan` is make_plan's (plan, functions) or None.
+    path -> (mode, bytes)"""
     s, acc = cfg["system"], cfg["access"]
     wifi = read_wifi(rel(acc["wifi"]))
     pubkey = open(os.path.expanduser(acc["ssh_public_key"])).read().strip()
@@ -269,7 +272,8 @@ def config_files(cfg, plan):
     files["etc/usb-gadget/pi_kmods.sh"] = (0o755, open(os.path.join(REPO, "alpine-module", "pi_kmods.sh"), "rb").read())
     if plan:
         files["etc/usb-gadget/gadget.sh"] = (0o755, open(os.path.join(REPO, "gadget.sh"), "rb").read())
-        files["etc/usb-gadget/device.plan"] = (0o644, plan.encode())
+        files["etc/usb-gadget/device.plan"] = (0o644, plan[0].encode())
+        files["etc/usb-gadget/functions"] = (0o644, plan[1].encode())
         if cfg["device"].get("start_at_boot", False):
             files["etc/usb-gadget/start-at-boot"] = (0o644, b"")
     return files
@@ -381,9 +385,11 @@ def validate(cfg, path):
     dev = cfg.get("device")
     if dev is not None:
         if "description" not in dev:
-            sys.exit(f"{path}: [device] needs description = \"<file>.json\"")
+            sys.exit(f"{path}: [device] needs description = \"<file>.json\" (or a hand-written .toml)")
         if not os.path.exists(rel(dev["description"])):
             sys.exit(f"{path}: [device] description {rel(dev['description'])} doesn't exist")
+        if dev.get("console") and not cfg["access"].get("debug_console", True):
+            sys.exit(f"{path}: [device] console needs [access] debug_console = true")
     if cfg.get("image", {}).get("type", "diskless") not in ("diskless", "initramfs"):
         sys.exit(f"{path}: [image] type is \"diskless\" or \"initramfs\"")
 
@@ -430,7 +436,9 @@ def main():
         with open(os.path.join(card, "usercfg.txt"), "w") as f:
             f.write("\n".join(BOOT_CONFIG) + "\n")
         print(f"{name}: {n} files")
-    print("at boot: " + ("device" if plan and cfg["device"].get("start_at_boot") else "debug console"))
+    dev = cfg.get("device") or {}
+    print("at boot: " + ("device" + (" with the debug console" if dev.get("console") else "")
+                         if plan and dev.get("start_at_boot") else "debug console"))
 
     step("manifest")
     text = manifest(card)

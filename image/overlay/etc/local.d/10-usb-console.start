@@ -1,6 +1,7 @@
 #!/bin/sh
 # USB serial gadget with a root shell, for when Wi-Fi/SSH don't come up. The
-# Mac sees /dev/cu.usbmodem*. gadget.sh unbinds it to take over the port.
+# Mac sees /dev/cu.usbmodem*. gadget.sh unbinds it to take over the port (a
+# device with [device] console has its own).
 G=/sys/kernel/config/usb_gadget/console
 modprobe libcomposite
 mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
@@ -12,7 +13,4 @@ cat /etc/hostname > $G/strings/0x409/manufacturer
 echo "debug console" > $G/strings/0x409/product
 ln -s $G/functions/acm.0 $G/configs/c.1/
 ls /sys/class/udc | head -n 1 > $G/UDC
-# root shell without a login prompt (busybox login refuses root on ttyGS0)
-( while :; do /sbin/getty -n -l /bin/sh -L 115200 ttyGS0 vt100; sleep 1; done ) >/dev/null 2>&1 &
-# so the gadget can be removed later: an open ttyGS0 blocks removing acm.0
-echo $! > /run/usb-console.pid
+sh /etc/usb-gadget/console.sh start ttyGS$(cat $G/functions/acm.0/port_num)
