@@ -47,9 +47,7 @@ keeps `wifi.local` out of git.
 
 1. **Image config:** `mkdir -p config && cp image/template.toml config/pi.toml`,
    then edit it. Each setting is commented.
-2. **Device:** put the description at `config/device.json`. Capture a real
-   device with the sibling project [usb-capture](../usb-capture) and copy the
-   file here, or write one in its format (that README describes it).
+2. **Device:** put the description at `config/device.json`.
 3. **Wi-Fi:** create `config/wifi.local` with `SSID=…`, `PASSWORD=…` and
    `COUNTRY=US` lines. The Zero 2 W only does 2.4 GHz.
 4. **Patched modules:** `alpine-module/build.sh` writes them to
@@ -90,8 +88,6 @@ ssh root@<address> sh /etc/usb-gadget/gadget.sh up      # present the device
 ssh root@<address> sh /etc/usb-gadget/gadget.sh down    # remove it; the debug console comes back if enabled
 ssh root@<address> sh /etc/usb-gadget/gadget.sh list
 ```
-
-To check what the host actually sees, use usb-capture's "Verify a clone".
 
 **Audio:** your code on the Pi uses ALSA `hw:0,0`. Host playback arrives as
 capture, and the device's microphone is playback. Reads fail until the host
