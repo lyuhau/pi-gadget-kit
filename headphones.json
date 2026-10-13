@@ -538,6 +538,7 @@
         }
       },
       "model": {
+        "format": 1,
         "device": {
           "idVendor": 4152,
           "idProduct": 8970,
@@ -546,7 +547,10 @@
           "bDeviceClass": 0,
           "bDeviceSubClass": 0,
           "bDeviceProtocol": 0,
-          "bMaxPacketSize0": 64
+          "bMaxPacketSize0": 64,
+          "iManufacturer": 1,
+          "iProduct": 2,
+          "iSerialNumber": 0
         },
         "speed": "full-speed",
         "strings": {
@@ -577,6 +581,7 @@
           {
             "kind": "uac1",
             "control_interface": 0,
+            "control_endpoints": 0,
             "name": null,
             "host_to_device": {
               "interface": 1,
@@ -598,6 +603,10 @@
                   "has_feedback_endpoint": false
                 }
               ],
+              "alt_names": {
+                "0": null,
+                "1": null
+              },
               "terminal_type": 770,
               "terminal_type_name": "headphones",
               "terminal_name": null,
@@ -636,6 +645,10 @@
                   "has_feedback_endpoint": false
                 }
               ],
+              "alt_names": {
+                "0": null,
+                "1": null
+              },
               "terminal_type": 1026,
               "terminal_type_name": "headset",
               "terminal_name": null,
@@ -703,5 +716,6 @@
         "string 33 (0x0409): unreferenced per-unit identifier"
       ]
     }
-  ]
+  ],
+  "model_format": 1
 }

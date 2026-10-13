@@ -1,0 +1,2 @@
+wpa_supplicant_args=""
+wpa_supplicant_if="wlan0"

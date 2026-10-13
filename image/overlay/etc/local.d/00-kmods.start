@@ -1,0 +1,4 @@
+#!/bin/sh
+# Load the patched USB gadget modules before anything pulls in the stock ones.
+[ -f /etc/usbpi/kmods.list ] || exit 0
+sh /etc/usbpi/pi_kmods.sh load > /run/kmods.log 2>&1

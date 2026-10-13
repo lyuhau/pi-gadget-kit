@@ -28,6 +28,10 @@ try:
 except ImportError:
     sys.exit("pyusb missing: python3 -m pip install pyusb   (and: brew install libusb)")
 
+# Version of the "model" dict, the contract with gadget_plan.py. Bump it when
+# fields are renamed or change meaning (adding fields doesn't need a bump).
+MODEL_FORMAT = 1
+
 SPEEDS = {1: "low-speed", 2: "full-speed", 3: "high-speed", 4: "super-speed", 5: "super-speed-plus"}
 DT_DEVICE, DT_CONFIG, DT_STRING, DT_QUALIFIER, DT_OTHER_SPEED, DT_BOS = 1, 2, 3, 6, 7, 0x0F
 TERMINAL_TYPES = {
@@ -505,8 +509,10 @@ def build_model(cap):
     super_speed = cap["speed"].startswith("super")
 
     model = {
+        "format": MODEL_FORMAT,
         "device": {k: dd[k] for k in ("idVendor", "idProduct", "bcdDevice", "bcdUSB", "bDeviceClass",
-                                      "bDeviceSubClass", "bDeviceProtocol", "bMaxPacketSize0")},
+                                      "bDeviceSubClass", "bDeviceProtocol", "bMaxPacketSize0",
+                                      "iManufacturer", "iProduct", "iSerialNumber")},
         "speed": cap["speed"],
         "strings": {"manufacturer": s(dd["iManufacturer"]), "product": s(dd["iProduct"]),
                     "serialnumber": s(dd["iSerialNumber"]),
@@ -592,6 +598,7 @@ def build_audio(cap, descs, by_if, s):
                 "fu_id": fu["bUnitID"], "fu_control_size": fu.get("bControlSize", 4)}
 
     out = {"kind": "uac2" if v2 else "uac1", "control_interface": ac["bInterfaceNumber"],
+           "control_endpoints": ac["bNumEndpoints"],
            "name": s(ac.get("iInterface")), "host_to_device": None, "device_to_host": None}
     for ifnum, alts in sorted(by_if.items()):
         head = alts[min(alts)][0]
@@ -630,7 +637,9 @@ def build_audio(cap, descs, by_if, s):
             ins = [units[i] for i in path if units[i]["name"] == "INPUT_TERMINAL" and units[i]["wTerminalType"] != 0x0101]
             phys = ins[0] if ins else {}
             direction = "device_to_host"
-        out[direction] = {"interface": ifnum, "alts": stream_alts,
+        alt_names = {str(alt): s(ds[0].get("iInterface")) for alt, ds in sorted(alts.items())
+                     if ds and ds[0]["name"] == "INTERFACE"}
+        out[direction] = {"interface": ifnum, "alts": stream_alts, "alt_names": alt_names,
                           "terminal_type": phys.get("wTerminalType"),
                           "terminal_type_name": TERMINAL_TYPES.get(phys.get("wTerminalType"), "unknown"),
                           "terminal_name": s(phys.get("iTerminal")),
@@ -703,7 +712,7 @@ def cmd_capture(args):
         print("capturing", describe(dev))
         caps.append(capture(dev, args.probe_strings, args.seize))
     with open(args.output, "w") as f:
-        json.dump({"tool": "capture_usb.py", "devices": caps}, f, indent=2)
+        json.dump({"tool": "capture_usb.py", "model_format": MODEL_FORMAT, "devices": caps}, f, indent=2)
     print(f"wrote {args.output}\n")
     for c in caps:
         show(c)
@@ -793,6 +802,7 @@ def cmd_refresh(args):
     script learned to extract more fields."""
     with open(args.file) as f:
         data = json.load(f)
+    data["model_format"] = MODEL_FORMAT
     for cap in data["devices"]:
         cap["model"] = build_model(cap)
     with open(args.file, "w") as f:

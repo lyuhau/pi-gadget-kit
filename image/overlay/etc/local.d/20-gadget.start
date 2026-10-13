@@ -1,0 +1,4 @@
+#!/bin/sh
+# Start the gadget named in /etc/usbpi/boot-gadget ([boot] gadget in the image config).
+[ -s /etc/usbpi/boot-gadget ] || exit 0
+sh /etc/usbpi/gadget.sh up "/etc/usbpi/gadgets/$(cat /etc/usbpi/boot-gadget).plan" > /run/gadget.log 2>&1
