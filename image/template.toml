@@ -39,14 +39,16 @@ repositories = [
 [access]
 wifi = "wifi.local"                       # SSID, PASSWORD, COUNTRY lines; keep it out of git
 ssh_public_key = "~/.ssh/id_ed25519.pub"  # root login over SSH, key only
-debug_console = true                      # USB serial root shell (no password) while no device is up
+debug_console = true                      # USB serial root shell (no password) while no device is up, or in it ([device] console)
 
 # The USB device the Pi presents; it can be composite (several interfaces).
 # description: a JSON in usb-capture's format (~/Code/usb-capture): capture a
-# real device there and copy the file here, or write one.
+# real device there and copy the file here; or a hand-written .toml (README:
+# Hand-written devices).
 # Remove this section for a Pi that only offers the debug console.
 [device]
 description = "device.json"
 max_speed = ""         # "" = as described, or "full-speed" / "high-speed"
 test_ids = false       # true: VID:PID 1209:0001 instead of the described IDs
 start_at_boot = false  # false: boot to the debug console; start it with gadget.sh up
+console = false        # true: the device includes the debug console (acm.console)

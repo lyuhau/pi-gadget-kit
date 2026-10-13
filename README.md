@@ -15,11 +15,12 @@ config/  ─►  build_card.py  ─►  SD card  ─►  Pi: gadget.sh up
 
 One device at a time: the Zero 2 W has a single USB device port.
 
-- **Supported:** composite or not, at full or high speed, with audio (UAC1;
-  UAC2 is untested) and HID interfaces.
-- **Not supported:** other interface classes (mass storage, serial, network,
-  MIDI, video) are skipped, and the Pi can't present low speed, which many
-  simple keyboards and mice use.
+- **Supported:** composite or not, at full or high speed, with audio (UAC1,
+  UAC2) and HID interfaces; hand-written devices can also have network
+  (ECM, NCM, RNDIS) and serial (ACM) functions.
+- **Not supported:** other interface classes (mass storage, MIDI, video, and
+  network or serial interfaces of a capture) are skipped, and the Pi can't
+  present low speed, which many simple keyboards and mice use.
 - **Partial matches:** anything else the description has that can't be
   reproduced is listed as a note when the card is built. The full list is in
   `gadget_plan.py`.
@@ -49,11 +50,59 @@ keeps `wifi.local` out of git.
    then edit it. Each setting is commented.
 2. **Device:** put the description at `config/device.json`. Capture a real
    device with the sibling project [usb-capture](../usb-capture) and copy the
-   file here, or write one in its format (that README describes it).
+   file here, or write one by hand (see [Hand-written devices](#hand-written-devices)).
 3. **Wi-Fi:** create `config/wifi.local` with `SSID=…`, `PASSWORD=…` and
    `COUNTRY=US` lines. The Zero 2 W only does 2.4 GHz.
 4. **Patched modules:** `alpine-module/build.sh` writes them to
    `out/modules/`. The first run downloads about 150 MB of kernel source.
+
+## Hand-written devices
+
+For a device with nothing to capture, write the description as TOML
+(`description = "device.toml"`). It is usb-capture's `model` (its README:
+Capture format) with defaults for whatever is left out, so it plans exactly
+like a capture. Unknown keys are refused. For example, UAC2 audio both ways
+plus networking:
+
+```toml
+speed = "high-speed"                          # default
+[device]
+idVendor = 0x1d6b                             # required, as is idProduct
+idProduct = 0x0104
+[strings]
+manufacturer = "example"                      # also product, serialnumber
+[config]
+max_power_ma = 250                            # also configuration, bmAttributes
+
+[[functions]]                                 # in interface order
+kind = "ecm"
+id = "net"
+dev_addr = "02:a0:00:00:00:01"                # left out: random at every boot
+host_addr = "02:a0:00:00:00:02"
+
+[[functions]]
+kind = "uac2"
+id = "audio"
+[functions.host_to_device]                    # the host plays (c_* in configfs)
+rates = [48000]                               # defaults: 48 kHz, 2 channels, 2 bytes
+[functions.device_to_host]                    # the host records (p_*); leave out for one direction
+channels = 1
+```
+
+| `kind` | Settings besides `id` |
+|---|---|
+| `uac2`, `uac1` | `name` (control interface), `function_name` (uac2), `req_number`; per direction `channels` or `chmask`, `rates` (up to 10), `subslot_bytes`, `sync`, `bInterval` (high-speed `hs_bint`, 0 = auto), `mute`, `volume = {min, max, res}` (1/256 dB), `terminal_type`, terminal, unit, channel and clock names |
+| `hid` | `report_desc` (hex, required), `subclass`, `protocol`, `report_length`, `name`, `has_out_endpoint`, `bInterval` |
+| `ecm`, `ncm`, `rndis` | `dev_addr`, `host_addr`, `qmult`, `ifname` (with one `%d`), `max_segment_size` (ncm) |
+| `acm` | `protocol` |
+
+The full list, and what stock UAC2 can't match, is in `gadget_plan.py`; the
+descriptions in `tests/data/` use every setting.
+
+**Names**, for apps that change the device at runtime: the gadget is
+`/sys/kernel/config/usb_gadget/device`, each function `functions/KIND.ID`
+(`uac2.audio`), or `KIND.N` without an `id`, numbered per kind from 0 as
+captures are (`hid.0`). The card lists them in `/etc/usb-gadget/functions`.
 
 ## Build and install the card
 
@@ -111,6 +160,10 @@ ssh root@<address> sh /etc/usb-gadget/gadget.sh down    # remove it; the debug c
 ssh root@<address> sh /etc/usb-gadget/gadget.sh list
 ```
 
+The device takes the USB port from the debug console. With `[device]
+console = true` it includes the console instead (as `acm.console`, an extra
+serial interface), so `pi_console.py` keeps working while the device is up.
+
 To check what the host actually sees, use usb-capture's "Verify a clone".
 
 **Audio:** your code on the Pi uses ALSA `hw:0,0`. Host playback arrives as
@@ -160,11 +213,14 @@ the build works only from the copy in `out/cache/`.
 | `image_initramfs.py`, `image/init` | The initramfs image type: its build, and its PID 1 on the Pi |
 | `gadget_plan.py` | Device description → plan of configfs operations (run by `build_card.py`) |
 | `gadget.sh` | On the Pi: apply the plan (`up` / `down` / `list`) |
+| `tests/` | Golden plans for `gadget_plan.py`: `.venv/bin/python -m unittest discover tests` |
 | `alpine-module/` | Patched gadget modules (`patches/`, built in Docker for `kernel.env`'s kernel); `pi_kmods.sh` loads them on the Pi |
 | `pi_console.py` | Runs commands over the Pi's USB debug console |
 | `out/` | Build output: modules, `device.plan`, card contents, manifests |
 
 The patches in `alpine-module/patches/` make descriptor details of `f_uac1`,
 `f_hid` and configfs settable. One also fixes stock `f_uac1`'s broken
-full-speed audio. Each patch file says what it changes. A Buildroot-based
+full-speed audio. Each patch file says what it changes. The card loads the
+other functions it supports (`f_uac2`, `f_acm`, networking) from the same
+build. A Buildroot-based
 image (fast boot, self-contained) is parked on the `buildroot` branch.
