@@ -113,7 +113,7 @@ up() {
 	[ "$plan" -ef "$RUNPLAN" ] || cp "$plan" "$RUNPLAN"
 	if [ -n "$console" ]; then
 		tty=ttyGS$(cat "$g/$console/port_num")
-		sh "$CONSOLE" start "$tty"
+		sh "$CONSOLE" start "$tty" 9>&-    # the shell must not hold the lock
 		echo "debug console on $tty"
 	fi
 }
@@ -138,6 +138,13 @@ set_attrs() {
 	set +e
 	udc=$(cat "$g/UDC")
 	[ -z "$udc" ] || echo > "$g/UDC"
+	# a console shell holding an acm port makes unlinking it hang (see remove)
+	ttys=
+	for a in "$g"/functions/acm.*; do
+		[ -d "$a" ] || continue
+		t=ttyGS$(cat "$a/port_num")
+		sh "$CONSOLE" stop "$t"; ttys="$ttys $t"
+	done
 	for c in "$g"/configs/*/; do
 		find "$c" -maxdepth 1 -type l -exec rm {} \;
 	done
@@ -161,6 +168,7 @@ set_attrs() {
 		echo "$udc" > "$g/UDC" || failed=1
 		net_up "$g"
 	fi
+	for t in $ttys; do sh "$CONSOLE" start "$t" 9>&-; done
 	set -e
 	[ -z "$failed" ] || exit 1
 	echo "gadget '$name': $fn set${udc:+, rebound on $udc}"
