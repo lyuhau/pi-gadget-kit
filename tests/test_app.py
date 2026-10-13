@@ -74,6 +74,23 @@ class Config(unittest.TestCase):
                     validate(cfg)
                 self.assertIn(what, str(e.exception))
 
+    def test_ssh_key_relative_to_config(self):
+        cfg = load()
+        cfg["access"]["ssh_public_key"] = "device.toml"  # any file next to the config
+        cwd = os.getcwd()
+        os.chdir("/")
+        try:
+            validate(cfg)
+            files = bc.config_files(cfg, plan(cfg))
+        finally:
+            os.chdir(cwd)
+        self.assertEqual(files["root/.ssh/authorized_keys"][1],
+                         bc.read(os.path.join(EXAMPLE, "device.toml")).strip() + b"\n")
+        cfg["access"]["ssh_public_key"] = "~/no-such-key.pub"
+        with self.assertRaises(SystemExit) as e:
+            validate(cfg)
+        self.assertIn(os.path.expanduser("~/no-such-key.pub"), str(e.exception))
+
     def test_platform_files_are_the_platforms(self):
         cfg = load()
         cfg["app"]["files"] = {"etc/usb-gadget/gadget.sh": "app/run.sh"}

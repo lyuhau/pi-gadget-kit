@@ -355,7 +355,7 @@ def config_files(cfg, plan):
     else:  # nothing brings wlan0 up: only the loopback
         files["etc/network/interfaces"] = (0o644, b"auto lo\niface lo inet loopback\n")
     if acc.get("ssh_public_key"):
-        pubkey = open(os.path.expanduser(acc["ssh_public_key"])).read().strip()
+        pubkey = open(rel(acc["ssh_public_key"])).read().strip()
         files["root/.ssh/authorized_keys"] = (0o600, (pubkey + "\n").encode())
     files["etc/usb-gadget/kmods.list"] = (0o644, (" ".join(KMODS) + "\n").encode())
     files["etc/usb-gadget/pi_kmods.sh"] = (0o755, read(os.path.join(REPO, "alpine-module", "pi_kmods.sh")))
@@ -488,7 +488,7 @@ def validate(cfg, path):
     if missing:
         sys.exit(f"{path}: fill in {', '.join(missing)} (see image/template.toml)")
     acc = cfg.setdefault("access", {})
-    key = os.path.expanduser(acc.get("ssh_public_key") or "")
+    key = rel(acc["ssh_public_key"]) if acc.get("ssh_public_key") else ""
     if key and not os.path.exists(key):
         sys.exit(f"{path}: [access] ssh_public_key {key} doesn't exist")
     if acc.get("wifi") and not os.path.exists(rel(acc["wifi"])):
