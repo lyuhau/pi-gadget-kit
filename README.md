@@ -2,9 +2,9 @@
 
 Capture what a USB device reports about itself from a Mac, then make a
 Raspberry Pi Zero 2 W present itself the same way. With the patched kernel
-modules, the clone of the SteelSeries Arctis GameBuds in `headphones.json` has
-byte-identical device, configuration and HID report descriptors and the same
-string table, and audio works both ways at full speed.
+modules, a clone of SteelSeries Arctis GameBuds (UAC1 audio plus three HID
+interfaces) had byte-identical device, configuration and HID report
+descriptors and the same string table, and audio worked both ways at full speed.
 
 | Path | What it is |
 |---|---|
@@ -14,7 +14,7 @@ string table, and audio works both ways at full speed.
 | `image/template.toml` | Template image config: everything that goes on the Pi's card |
 | `image/overlay/` | Static files for the card's Alpine overlay |
 | `build_card.py` | Mac: build the card from the image config |
-| `gadgets/*.plan` | Generated plans (committed, so changes show in diffs) |
+| `gadgets/*.plan` | Generated plans: capture + gadget options (gitignored) |
 | `image/packages.lock` | Generated: packages cached on the card, with hashes |
 | `alpine-module/` | Patched gadget modules for the Pi's Alpine kernel, built in Docker |
 | `pi_console.py` | Mac: run commands on the Pi over its USB serial debug console |
@@ -24,12 +24,13 @@ string table, and audio works both ways at full speed.
 
 ```bash
 /usr/bin/python3 -m venv .venv && .venv/bin/pip install pyusb pyserial tomli   # once; needs: brew install libusb
-.venv/bin/python capture_usb.py capture --wait -o headphones.json                # then plug the device in
-sudo .venv/bin/python capture_usb.py capture --vid 0x1038 --pid 0x230a --seize -o headphones.json
-.venv/bin/python capture_usb.py show headphones.json
+.venv/bin/python capture_usb.py capture --wait -o mydevice.json                  # then plug the device in
+sudo .venv/bin/python capture_usb.py capture --vid 0x1038 --pid 0x230a --seize -o mydevice.json
+.venv/bin/python capture_usb.py show mydevice.json
 ```
 
-`--seize` detaches macOS's drivers (sudo needed), so audio-class and HID
+Captures in the repo root and the plans made from them are gitignored: they
+describe your devices. `--seize` detaches macOS's drivers (sudo needed), so audio-class and HID
 requests go through. Use `--bus` when two identical devices are plugged in.
 Use Apple's `/usr/bin/python3` for the venv; Homebrew's Python 3.13.16 reports
 an empty macOS version, which crashes pip.
@@ -64,9 +65,9 @@ starts the `[boot] gadget`.
 ## 3. Clone and verify
 
 ```bash
-ssh root@<pi> sh /etc/usbpi/gadget.sh up /etc/usbpi/gadgets/gamebuds.plan
-.venv/bin/python capture_usb.py capture --vid 0x1038 --pid 0x230a --bus <bus> -o out/pi.json
-.venv/bin/python capture_usb.py compare headphones.json out/pi.json
+ssh root@<pi> sh /etc/usbpi/gadget.sh up /etc/usbpi/gadgets/mydevice.plan
+.venv/bin/python capture_usb.py capture --vid <vid> --pid <pid> --bus <bus> -o out/pi.json
+.venv/bin/python capture_usb.py compare mydevice.json out/pi.json
 ssh root@<pi> sh /etc/usbpi/gadget.sh down clone        # back to the debug console
 ```
 
@@ -98,6 +99,5 @@ Docker volume in case Alpine's mirror moves on.
   - an empty manufacturer, product or serial gets string index 0
   - `hide_strings` keeps a string (and its ID) without referencing it
 
-Not reproduced: strings beyond a contiguous run 1..N (the GameBuds' index-33
-per-unit identifier, which is also redacted from `headphones.json`). Only
-probing tools ask for those.
+Not reproduced: strings beyond a contiguous run 1..N (the GameBuds had one at
+index 33). Only probing tools ask for those.

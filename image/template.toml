@@ -1,5 +1,5 @@
 # Template for an image config: everything that ends up on the Pi's SD card.
-# Copy it to image/<name>.toml (gitignored), fill in the empty values, then:
+# Copy it to image/<name>.toml (gitignored), add your gadgets, then:
 #   build_card.py image/<name>.toml [--install /Volumes/ALPINE]
 # Secrets stay in the files referenced under [access].
 
@@ -8,21 +8,26 @@
 # https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/<arch>/latest-releases.yaml
 # (flavor alpine-rpi: its version and sha256). The patched kernel modules must
 # be built for this release's kernel (see alpine-module/inside.sh).
-version = ""
+version = "3.24.2"
 arch = "aarch64"
-sha256 = ""
+sha256 = "60e6b9f49ec3d2c9660f2ef775f5af3a98cfd2f939c8f55b6f215d00e5ffcb87"
 
 [system]
-hostname = ""
+hostname = "usbpi"
 # Installed at every boot (Alpine runs diskless from RAM): from the card's
 # bundled apks/, and for anything Alpine doesn't bundle, from the card's cache/
 # that build_card.py fills (recorded in image/packages.lock).
-# The first six give Wi-Fi, SSH and time; add your own (e.g. "python3", "alsa-utils").
-packages = ["alpine-base", "openssh", "wpa_supplicant", "ifupdown-ng", "chrony", "iw"]
-# For "apk add" on the running Pi, and where cached packages come from; match
-# the release branch, e.g. "https://dl-cdn.alpinelinux.org/alpine/v3.24/main"
-# and ".../community". Needed if packages lists anything Alpine doesn't bundle.
-repositories = []
+packages = [
+  "alpine-base", "openssh", "wpa_supplicant", "ifupdown-ng", "chrony", "iw",  # Wi-Fi, SSH, time
+  "alsa-utils",  # arecord/aplay, amixer
+  "python3",     # for audio logic on the Pi
+]
+# For "apk add" on the running Pi, and where cached packages come from
+# (match the release branch above).
+repositories = [
+  "https://dl-cdn.alpinelinux.org/alpine/v3.24/main",
+  "https://dl-cdn.alpinelinux.org/alpine/v3.24/community",
+]
 # Loaded by the "modules" service. libcomposite is loaded later, from
 # [kernel_modules]: loading the stock one here would block the patched one.
 boot_modules = ["af_packet", "ipv6", "brcmfmac", "dwc2"]
@@ -38,7 +43,7 @@ default = ["wpa_supplicant", "networking", "sshd", "chronyd"]
 
 [access]
 wifi = "wifi.local"      # file with SSID, PASSWORD, COUNTRY lines (gitignored)
-ssh_public_key = ""      # e.g. "~/.ssh/id_ed25519.pub": root login, key only
+ssh_public_key = "~/.ssh/id_ed25519.pub"  # root login, key only
 debug_console = true     # USB serial root shell until a gadget takes the port
 
 [kernel_modules]
@@ -48,10 +53,11 @@ debug_console = true     # USB serial root shell until a gadget takes the port
 dir = "out/modules"
 load = ["libcomposite", "u_audio", "u_serial", "usb_f_acm", "usb_f_uac1", "usb_f_hid"]
 
-# Gadgets: a capture_usb.py capture plus gadget_plan.py options. build_card.py
-# writes each plan to gadgets/<name>.plan and onto the card.
+# Gadgets: a capture_usb.py capture (what the device looks like) plus
+# gadget_plan.py options (how to clone it). build_card.py combines them into
+# gadgets/<name>.plan (gitignored) and puts the plan on the card.
 # [gadgets.mydevice]
-# capture = "mydevice.json"
+# capture = "mydevice.json"   # capture_usb.py capture ... -o mydevice.json
 # max_speed = ""     # "" = as captured, or "full-speed" / "high-speed"
 # test_ids = false   # true: VID:PID 1209:0001 instead of the captured IDs
 
