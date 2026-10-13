@@ -83,6 +83,17 @@ up() {
 	done
 	echo "$udc" > "$g/UDC"
 	echo "gadget '$name' up on $udc"
+	# Bring network functions' interfaces up now, before the host can send.
+	# dwc2 shares one receive FIFO between all OUT endpoints and, in DMA mode,
+	# only drains it into a queued request: a packet for a network function
+	# whose interface is down (no receive requests yet) sits at the head of
+	# the FIFO and stalls every OUT transfer behind it, control requests
+	# included. Audio, serial and network from the host all go dead.
+	for f in "$g"/functions/*/; do
+		[ -f "$f/ifname" ] || continue
+		ifname=$(cat "$f/ifname")
+		ip link set dev "$ifname" up || echo "note: couldn't bring $ifname up"
+	done
 	if [ -n "$console" ]; then
 		tty=ttyGS$(cat "$g/$console/port_num")
 		sh "$CONSOLE" start "$tty"
