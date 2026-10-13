@@ -87,8 +87,9 @@ from RAM with the same kernel, packages, patched modules and config files.
 - **`initramfs`**: `image_initramfs.py` unpacks the packages on the Mac into
   one initramfs (`boot/initrd.img`, about 30 MB). The Pi's firmware loads it
   with the kernel, and `image/init` only starts things: watchdog, modules,
-  the same `/etc/local.d` scripts, Wi-Fi, SSH, time. Packages and changes
-  only come with a rebuild. Needs no Docker for packages, and keeps one ssh
+  the same `/etc/local.d` scripts, Wi-Fi, SSH, time. There is no OpenRC or
+  apk (`alpine-base` is left out), so packages and changes only come with a
+  rebuild. Needs no Docker for packages, and keeps one ssh
   host key per hostname in `out/`, so reinstalls keep the Pi's identity.
 
 The card is mounted read-only at `/media/mmcblk0p1` in both.

@@ -38,6 +38,11 @@ import build_card as bc
 # What image/init needs besides [system] packages.
 INIT_PACKAGES = ["alpine-baselayout", "busybox", "busybox-binsh", "dosfstools", "wpa_supplicant", "wireless-regdb",
                  "openssh-server"]
+# alpine-base in [system] packages is diskless Alpine's base system: OpenRC,
+# apk-tools and alpine-conf, none of which run here. It's replaced by the
+# parts that still mean something: the release's identity (/etc/os-release)
+# and the CA certificates apk-tools would have brought.
+BASE_KEEP = ["alpine-release", "ca-certificates-bundle"]
 # Kernel modules in the image (with their dependencies): the boot modules, the
 # gadget modules, and the Wi-Fi driver's vendor parts.
 MODULES = bc.BOOT_MODULES + bc.KMODS + ["brcmfmac_cyw", "brcmfmac_wcc", "brcmfmac_bca"]
@@ -466,7 +471,13 @@ def build(cfg, tarball, card, files, refetch, lock_path):
 
         bc.step("packages")
         repos = Repos(cfg, release, cache, refetch)
-        names = repos.resolve(INIT_PACKAGES + s["packages"])
+        wanted = s["packages"]
+        if "alpine-base" in wanted:
+            i = wanted.index("alpine-base")
+            wanted = wanted[:i] + BASE_KEEP + [p for p in wanted[i + 1:] if p != "alpine-base"]
+            print("alpine-base left out: its OpenRC and apk-tools don't run in this image type "
+                  f"(kept {', '.join(BASE_KEEP)})")
+        names = repos.resolve(INIT_PACKAGES + wanted)
         tree, scripts, lock = Tree(), [], []
         for n in names:
             control, data, digest, fname = repos.fetch(n)
