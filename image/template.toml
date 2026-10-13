@@ -3,6 +3,8 @@
 #   build_card.py config/pi.toml [--install /Volumes/ALPINE]
 # Relative paths are relative to this file. The fixed plumbing (boot modules,
 # services, USB device mode) lives in build_card.py.
+# A second config can build on this one: include = "pi.toml" at its top, then
+# only the keys that differ (README: Apps, Dev and release).
 
 [image]
 # "diskless": stock Alpine, installs its packages into RAM at every boot.
@@ -37,8 +39,8 @@ repositories = [
 ]
 
 [access]
-wifi = "wifi.local"                       # SSID, PASSWORD, COUNTRY lines; keep it out of git
-ssh_public_key = "~/.ssh/id_ed25519.pub"  # root login over SSH, key only
+wifi = "wifi.local"                       # SSID, PASSWORD, COUNTRY lines; keep it out of git; "" = no Wi-Fi
+ssh_public_key = "~/.ssh/id_ed25519.pub"  # root login over SSH, key only; "" = no sshd
 debug_console = true                      # USB serial root shell (no password) while no device is up, or in it ([device] console)
 
 # The USB device the Pi presents; it can be composite (several interfaces).
@@ -52,3 +54,16 @@ max_speed = ""         # "" = as described, or "full-speed" / "high-speed"
 test_ids = false       # true: VID:PID 1209:0001 instead of the described IDs
 start_at_boot = false  # false: boot to the debug console; start it with gadget.sh up
 console = false        # true: the device includes the debug console (acm.console)
+
+# Your own program on the Pi, started right after the device (README: Apps).
+# Remove this section for none.
+#[app]
+#name = "myapp"                      # lowercase; /var/lib/myapp, the card's myapp/
+#files = { "opt/myapp/start.sh" = "../pi/start.sh" }  # path on the Pi = source
+#overlay = "overlay"                 # a folder copied onto / as is
+#run = "/opt/myapp/start.sh"         # shell command, started once, before Wi-Fi
+#owns = []                           # "wifi", "time": the platform doesn't start them
+#state = false                       # true: /var/lib/myapp is kept on the card
+#keep_logs = false                   # true: /var/log kept on the card (logs/last, logs/prev)
+#config_txt = []                     # extra config.txt lines, e.g. "gpio=21=ip,pu"
+#kmods = []                          # stock kernel modules to ship and load before run

@@ -6,8 +6,9 @@ Build the Pi's SD card contents from an image config (config/pi.toml).
   build_card.py config/pi.toml --install /Volumes/ALPINE
   build_card.py config/pi.toml --refetch                # re-download cached packages
 
-Relative paths in the config (device description, Wi-Fi file) are relative
-to the config file.
+Relative paths in the config (device description, Wi-Fi file, [app] files)
+are relative to the config file. A config can include another one in its
+folder (include = "pi.toml"), and run an app ([app]; README: Apps).
 
 Steps:
   1. Alpine release tarball, verified against [alpine] sha256 (cached in out/cache/)

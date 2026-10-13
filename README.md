@@ -52,7 +52,9 @@ keeps `wifi.local` out of git.
    device with the sibling project [usb-capture](../usb-capture) and copy the
    file here, or write one by hand (see [Hand-written devices](#hand-written-devices)).
 3. **Wi-Fi:** create `config/wifi.local` with `SSID=…`, `PASSWORD=…` and
-   `COUNTRY=US` lines. The Zero 2 W only does 2.4 GHz.
+   `COUNTRY=US` lines. The Zero 2 W only does 2.4 GHz. Optional: with
+   `wifi = ""` the Pi leaves Wi-Fi alone (as it does SSH with
+   `ssh_public_key = ""`).
 4. **Patched modules:** `alpine-module/build.sh` writes them to
    `out/modules/`. The first run downloads about 150 MB of kernel source.
 
@@ -99,10 +101,11 @@ channels = 1
 The full list, and what stock UAC2 can't match, is in `gadget_plan.py`; the
 descriptions in `tests/data/` use every setting.
 
-**Names**, for apps that change the device at runtime: the gadget is
-`/sys/kernel/config/usb_gadget/device`, each function `functions/KIND.ID`
-(`uac2.audio`), or `KIND.N` without an `id`, numbered per kind from 0 as
-captures are (`hid.0`). The card lists them in `/etc/usb-gadget/functions`.
+**Names**, for apps that change the device at runtime (see [Apps](#apps)):
+the gadget is `/sys/kernel/config/usb_gadget/device`, each function
+`functions/KIND.ID` (`uac2.audio`), or `KIND.N` without an `id`, numbered
+per kind from 0 as captures are (`hid.0`). The card lists them in
+`/etc/usb-gadget/functions`.
 
 ## Build and install the card
 
@@ -136,12 +139,13 @@ from RAM with the same kernel, packages, patched modules and config files.
 - **`initramfs`**: `image_initramfs.py` unpacks the packages on the Mac into
   one initramfs (`boot/initrd.img`, about 30 MB). The Pi's firmware loads it
   with the kernel, and `image/init` only starts things: watchdog, modules,
-  the same `/etc/local.d` scripts, Wi-Fi, SSH, time. There is no OpenRC or
+  the same `/etc/local.d` scripts, the card, the app, Wi-Fi, SSH, time. There is no OpenRC or
   apk (`alpine-base` is left out), so packages and changes only come with a
   rebuild. Needs no Docker for packages, and keeps one ssh
   host key per hostname in `out/`, so reinstalls keep the Pi's identity.
 
-The card is mounted read-only at `/media/mmcblk0p1` in both.
+The card is mounted at `/media/mmcblk0p1` in both: read-only, unless an
+[app](#apps) keeps state or logs there.
 
 ## Use the Pi
 
@@ -158,6 +162,7 @@ diskless reinstall the Pi has new host keys, so first run `ssh-keygen -R <addres
 ssh root@<address> sh /etc/usb-gadget/gadget.sh up      # present the device
 ssh root@<address> sh /etc/usb-gadget/gadget.sh down    # remove it; the debug console comes back if enabled
 ssh root@<address> sh /etc/usb-gadget/gadget.sh list
+ssh root@<address> sh /etc/usb-gadget/gadget.sh set audio c_srate=44100   # see Apps
 ```
 
 The device takes the USB port from the debug console. With `[device]
@@ -188,6 +193,94 @@ plugged into the Pi's USB port (set `debug_console = false` to drop it), and
 the Wi-Fi password is stored in plain text on the card (as is the initramfs
 image's ssh host key).
 
+## Apps
+
+Another project can run on the Pi as an app: its own repo, with its own
+`config/pi.toml` (this README's settings plus `[app]`), built with this
+repo's `build_card.py`. usb knows nothing about the app; the app relies only
+on what's below. `examples/heartbeat/` is the smallest one.
+
+```toml
+[app]
+name = "myapp"                      # lowercase; its state folder, as below
+files = { "opt/myapp/myapp.pyz" = "../dist/myapp.pyz" }  # on the Pi = source
+overlay = "pi/overlay"              # and/or a folder copied onto / as is
+run = "/opt/myapp/start.sh --flag"  # shell command, started once
+owns = ["wifi", "time"]             # the platform doesn't start them
+state = true                        # /var/lib/myapp is the card's myapp/
+keep_logs = true                    # /var/log on the card: logs/last, logs/prev
+config_txt = ["gpio=21=ip,pu"]      # extra config.txt lines
+kmods = ["snd_aloop"]               # stock modules to ship and load before run
+```
+
+- **Files:** sources are relative to the config; executable ones stay
+  executable; `files` wins over `overlay`. They may replace packages' files,
+  not the platform's (`/etc/usb-gadget/`, refused at build).
+- **run** starts once the device is up (`start_at_boot`) and the card is
+  checked and mounted, before Wi-Fi and SSH: in the background, in its own
+  session, output to `/var/log/app.log`. Only once: a crash is the app's to
+  handle (a respawn loop). Without `start_at_boot` there's no device yet;
+  `gadget.sh up` is then the app's call.
+- **owns:** `wifi`: no `wpa_supplicant`, `udhcpc` (needs `[access] wifi`
+  empty or left out; the app brings its own packages and config). `time`:
+  no `chronyd`/`ntpd`.
+- **state:** the card is mounted read-write and the app's folder on it
+  (created) is bound to `/var/lib/NAME`. No card (booted over USB): that
+  folder is in RAM. It's FAT and the Pi loses power any time: write a new
+  file, `fsync`, rename, `sync`.
+- **keep_logs:** at start, the card's `logs/last` becomes `logs/prev`; every
+  10 minutes from a minute in, and at shutdown, `/var/log/*` is copied to
+  `logs/last`.
+
+`/etc/usb-gadget/app.env` (shell syntax; exported to `run`) says where
+things are:
+
+| Variable | Value |
+|---|---|
+| `APP_NAME`, `APP_RUN`, `APP_OWNS` | from `[app]` |
+| `APP_STATE` | `/var/lib/NAME` |
+| `APP_LOG` | `/var/log/app.log` |
+| `CARD` | `/media/mmcblk0p1` |
+| `APP_LOGS` | `$CARD/logs` (with `keep_logs`) |
+| `GADGET` | `/sys/kernel/config/usb_gadget/device` (with `[device]`) |
+| `GADGET_SH` | `/etc/usb-gadget/gadget.sh` |
+| `GADGET_FUNCTIONS` | `/etc/usb-gadget/functions`: `ID KIND DIRECTORY` per function |
+
+**Changing the device at runtime**, e.g. another audio format:
+
+```sh
+sh "$GADGET_SH" set audio c_srate=96000 p_srate=96000   # FUNCTION ATTR=VALUE...
+```
+
+The host sees an unplug and a new device. Exit status 1 names a refused
+write; the device is back either way. Don't do it by hand: attributes only
+change while the function is in no configuration, and
+- links are ordered: relinking one function moves its interfaces to the
+  end, so `set` unlinks and relinks them all in the plan's order;
+- after every bind, network functions' interfaces (ECM, NCM, RNDIS) must
+  come up at once: dwc2 shares one receive FIFO between all OUT endpoints,
+  and a packet for an interface that's down jams it, audio and control
+  requests included. `set` and `up` do that (addresses are the app's).
+
+**Dev and release:** keep two configs. The release one includes the dev one
+(same folder) and overrides what differs, section by section, key by key:
+
+```toml
+include = "pi.toml"
+[access]
+ssh_public_key = ""          # no sshd
+debug_console = false
+[device]
+description = "device-release.toml"   # e.g. without the ECM function
+console = false
+```
+
+**Diskless** runs apps too, with OpenRC: `run` from
+`/etc/local.d/90-app.start`, `owns` takes services out of the runlevels,
+`config_txt` goes to `usercfg.txt`. But the app starts 20–30 s after power,
+and Alpine mounts the card before anything can check it, so state is written
+to an unchecked card.
+
 ## Changing the Alpine release
 
 The patched modules are built for one exact kernel. To move to another
@@ -209,11 +302,13 @@ the build works only from the copy in `out/cache/`.
 | `config/` | Your settings: `pi.toml`, `device.json`, `wifi.local`; plus the generated `packages.lock`, listing cached packages with hashes |
 | `image/template.toml` | Template for `config/pi.toml` |
 | `image/overlay/` | Files placed on the Pi as-is (startup scripts, network) |
+| `image/app.sh` | On the Pi: starts an `[app]` (state folder, logs, `run`) |
+| `examples/heartbeat/` | The smallest app: dev and release configs, a `run` script |
 | `build_card.py` | Builds and installs the card; owns the fixed plumbing (boot modules, services) |
 | `image_initramfs.py`, `image/init` | The initramfs image type: its build, and its PID 1 on the Pi |
 | `gadget_plan.py` | Device description → plan of configfs operations (run by `build_card.py`) |
-| `gadget.sh` | On the Pi: apply the plan (`up` / `down` / `list`) |
-| `tests/` | Golden plans for `gadget_plan.py`: `.venv/bin/python -m unittest discover tests` |
+| `gadget.sh` | On the Pi: apply the plan (`up` / `down` / `list` / `set`) |
+| `tests/` | Golden plans for `gadget_plan.py`, `[app]` builds: `.venv/bin/python -m unittest discover tests` |
 | `alpine-module/` | Patched gadget modules (`patches/`, built in Docker for `kernel.env`'s kernel); `pi_kmods.sh` loads them on the Pi |
 | `pi_console.py` | Runs commands over the Pi's USB debug console |
 | `out/` | Build output: modules, `device.plan`, card contents, manifests |
