@@ -1,25 +1,21 @@
-# usb: clone a USB device with a Raspberry Pi
+# usb: a Raspberry Pi as a configurable USB device
 
-Make a Raspberry Pi Zero 2 W present itself to a host as a captured USB
-device: same IDs, descriptors and strings, with working audio and HID
-endpoints. The Pi runs Alpine Linux, with patched USB gadget modules so that
-details the stock kernel hard-codes can be matched.
-
-A clone of SteelSeries Arctis GameBuds (UAC1 audio plus three HID interfaces)
-had byte-identical device, configuration and HID report descriptors and the
-same string table, and audio worked both ways at full speed.
+Build a Raspberry Pi Zero 2 W SD card from one config file, so the Pi boots
+into a known state and presents itself to a host as the USB devices you
+define. The Pi runs Alpine Linux, with patched USB gadget modules so that
+details the stock kernel hard-codes can be set. Use it as is, or as a
+template for a project that needs a Pi to act as a USB device.
 
 ## How it fits together
 
 ```
-usb-capture (sibling repo)       this repo (Mac)                      Pi (Alpine, diskless)
-capture_usb.py ─► mydevice.json ─► gadget_plan.py ─► gadgets/*.plan ─┐
-                  image/<name>.toml ─► build_card.py ─► card files ──┴─► gadget.sh up PLAN
+device capture (JSON) ─► gadget_plan.py ─► gadgets/*.plan ─┐
+image/<name>.toml ─────► build_card.py ─► card files ──────┴─► Pi: gadget.sh up PLAN
 ```
 
-- **Capture** (sibling repo [usb-capture](../usb-capture)): `capture_usb.py`
-  records what a device reports into JSON. Its `model` is the contract with
-  this repo.
+- **Device description:** a JSON capture made with the sibling project
+  [usb-capture](../usb-capture). This repo reads only its `model`; see that
+  README for the format.
 - **Plan:** `gadget_plan.py` turns a capture plus options into the exact
   configfs operations that reproduce it.
 - **Image config** (`image/<name>.toml`): everything on the Pi's card. That
@@ -123,24 +119,18 @@ Builds are reproducible: the same inputs give the same
 packages cached on the card, with hashes, so updates from Alpine's mirrors
 show up as a diff.
 
-## Use the clone
+## Run a gadget
 
 ```bash
 ssh root@<pi> sh /etc/usbpi/gadget.sh up /etc/usbpi/gadgets/mydevice.plan
-ssh root@<pi> sh /etc/usbpi/gadget.sh down clone       # back to the debug console
+ssh root@<pi> sh /etc/usbpi/gadget.sh down clone       # plans name the gadget "clone"; back to the debug console
 ssh root@<pi> sh /etc/usbpi/gadget.sh list
 ```
 
-To verify it, capture the clone with usb-capture and compare it with the
-original:
+To check that the host sees what the capture describes, use usb-capture's
+"Verify a clone".
 
-```bash
-cd ../usb-capture
-.venv/bin/python capture_usb.py capture --vid <vid> --pid <pid> --bus <bus> -o captures/clone.json
-.venv/bin/python capture_usb.py compare captures/mydevice.json captures/clone.json
-```
-
-**Audio on the Pi:** the clone is ALSA card `hw:0,0`. Host playback arrives
+**Audio on the Pi:** an audio gadget is ALSA card `hw:0,0`. Host playback arrives
 as capture, and the device's mic is playback. The `Capture Rate` control
 (`amixer -c 0 cget iface=PCM,name='Capture Rate'`) is 0 until the host starts
 streaming, and recording fails with an I/O error until then. So wait for it to
@@ -185,11 +175,8 @@ modules built for a different kernel than the configured release's.
   classes are reported and skipped.
 - **Audio formats:** only the first alternate audio format per direction.
 - **Languages:** English (`0x409`) strings only.
-- **String gaps:** strings beyond a contiguous run 1..N can't be placed. The
-  GameBuds had an extra one at index 33.
+- **String gaps:** strings beyond a contiguous run 1..N can't be placed.
 - **Speed:** the Pi's controller is USB 2.0. Full and high speed only.
-- **Not in a capture:** vendor requests, timing, error behavior and what the
-  HID interfaces send at runtime.
 
 ## Layout
 
