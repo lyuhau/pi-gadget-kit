@@ -1,85 +1,167 @@
-# USB device capture → Raspberry Pi gadget
+# usb: clone a USB device with a Raspberry Pi
 
-Capture what a USB device reports about itself from a Mac, then make a
-Raspberry Pi Zero 2 W present itself the same way. With the patched kernel
-modules, a clone of SteelSeries Arctis GameBuds (UAC1 audio plus three HID
-interfaces) had byte-identical device, configuration and HID report
-descriptors and the same string table, and audio worked both ways at full speed.
+Make a Raspberry Pi Zero 2 W present itself to a host as a captured USB
+device: same IDs, descriptors and strings, with working audio and HID
+endpoints. The Pi runs Alpine Linux, with patched USB gadget modules so that
+details the stock kernel hard-codes can be matched.
 
-| Path | What it is |
-|---|---|
-| `gadget_plan.py` | Mac: capture → gadget plan (the exact configfs writes) |
-| `gadget.sh` | Pi: apply a plan (`up` / `down` / `list`) |
-| `image/template.toml` | Template image config: everything that goes on the Pi's card |
-| `image/overlay/` | Static files for the card's Alpine overlay |
-| `build_card.py` | Mac: build the card from the image config |
-| `gadgets/*.plan` | Generated plans: capture + gadget options (gitignored) |
-| `image/packages.lock` | Generated: packages cached on the card, with hashes |
-| `alpine-module/` | Patched gadget modules for the Pi's Alpine kernel, built in Docker |
-| `pi_console.py` | Mac: run commands on the Pi over its USB serial debug console |
-| `buildroot/` | Buildroot tree for a self-contained image (work in progress) |
+A clone of SteelSeries Arctis GameBuds (UAC1 audio plus three HID interfaces)
+had byte-identical device, configuration and HID report descriptors and the
+same string table, and audio worked both ways at full speed.
 
-## 1. Capture (Mac)
+## How it fits together
 
-Captures come from the sibling project
-[usb-capture](../usb-capture) (`capture_usb.py`); see its README. Point a
-`[gadgets.<name>]` section of your image config at the capture file. Paths are
-relative to this repo, e.g. `../usb-capture/captures/mydevice.json`.
+```
+usb-capture (sibling repo)       this repo (Mac)                      Pi (Alpine, diskless)
+capture_usb.py ─► mydevice.json ─► gadget_plan.py ─► gadgets/*.plan ─┐
+                  image/<name>.toml ─► build_card.py ─► card files ──┴─► gadget.sh up PLAN
+```
 
-This repo's venv only needs `pyserial` (`pi_console.py`) and `tomli`
-(`build_card.py` on Python < 3.11):
+- **Capture** (sibling repo [usb-capture](../usb-capture)): `capture_usb.py`
+  records what a device reports into JSON. Its `model` is the contract with
+  this repo.
+- **Plan:** `gadget_plan.py` turns a capture plus options into the exact
+  configfs operations that reproduce it.
+- **Image config** (`image/<name>.toml`): everything on the Pi's card. That
+  covers the Alpine release, packages, services, access, patched modules, and
+  which gadgets exist and which starts at boot.
+- **Card:** `build_card.py` builds the card from the config, reproducibly.
+- **Pi:** `gadget.sh` replays a plan. Python is on the Pi only for your own
+  code, such as audio processing.
+
+## Requirements (Mac)
+
+- Docker, for building kernel modules and caching packages (e.g. `brew
+  install colima docker && colima start --vm-type vz --cpu 6 --memory 12`)
+- `brew install rpiboot`, to write the SD card through the Pi itself
+  (no card reader needed)
+- A Python venv for this repo:
 
 ```bash
 /usr/bin/python3 -m venv .venv && .venv/bin/pip install pyserial tomli
 ```
 
-## 2. Build the card (Mac, needs Docker, e.g. Colima)
+Use Apple's `/usr/bin/python3`: Homebrew's Python 3.13.16 reports an empty
+macOS version, which crashes pip.
+
+## Set up
+
+1. **Wi-Fi and SSH.** Create `wifi.local` (gitignored). The Zero 2 W only
+   does 2.4 GHz:
+
+   ```
+   SSID=MyNetwork
+   PASSWORD=...
+   COUNTRY=US
+   ```
+
+   Root logs in over SSH with the public key named in the image config
+   (default `~/.ssh/id_ed25519.pub`); there's no password login.
+
+2. **Image config.** Copy the template, then add a gadget section per device
+   you've captured:
+
+   ```bash
+   cp image/template.toml image/usbpi.toml          # image/*.toml besides the template are gitignored
+   ```
+
+   ```toml
+   [gadgets.mydevice]
+   capture = "../usb-capture/captures/mydevice.json"   # relative to this repo
+   max_speed = ""     # "" = as captured, or "full-speed" / "high-speed"
+   test_ids = false   # true: VID:PID 1209:0001 instead of the captured IDs
+
+   [boot]
+   gadget = "mydevice"   # start it at power-on; "" = USB debug console instead
+   ```
+
+3. **Patched kernel modules:**
+
+   ```bash
+   alpine-module/build.sh            # -> out/modules/, about 15 s after the first run
+   ```
+
+## Build and install the card
 
 ```bash
-cp image/template.toml image/usbpi.toml                 # once, then fill it in (gitignored)
-alpine-module/build.sh                                  # patched modules -> out/modules/
-.venv/bin/python build_card.py image/usbpi.toml         # -> out/card-<hostname>/ + manifest
+.venv/bin/python build_card.py image/usbpi.toml        # -> out/card-<hostname>/ + manifest
+```
+
+To get the card onto the Mac without a card reader:
+
+1. Unplug the Pi and remove the card.
+2. Plug the Pi into the Mac: with no card it waits in USB boot mode.
+3. Insert the card.
+4. Expose the card as a disk:
+
+```bash
+rpiboot -d "$(brew --prefix rpiboot)/share/rpiboot/msd"
+```
+
+A new card needs one FAT32 (MBR) format first. Check the disk number with
+`diskutil list external` before running this:
+
+```bash
+diskutil eraseDisk FAT32 ALPINE MBRFormat /dev/diskN
+```
+
+Then install, which replaces the card's contents and verifies every file:
+
+```bash
 .venv/bin/python build_card.py image/usbpi.toml --install /Volumes/ALPINE
 ```
 
-Your image config (`image/*.toml` other than the template) stays out of git.
-It sets what's on the card: Alpine release,
-packages, services, boot modules, debug console, gadgets and their plan
-options, and which gadget starts at boot. Secrets stay outside the repo:
-`wifi.local` holds `SSID`, `PASSWORD` and `COUNTRY` (the Zero 2 W only does
-2.4 GHz), and your SSH public key is read from `~/.ssh`. Builds are
-reproducible: the same inputs give the same `out/card-<hostname>.manifest`.
+Eject the card and replug the Pi with the card in. It boots in about 30
+seconds. It installs the configured packages from the card offline (Alpine
+runs from RAM), joins Wi-Fi and loads the patched modules. Then it either
+starts the `[boot] gadget` or exposes a USB serial root shell
+(`pi_console.py 'command'`). After a reinstall the Pi has new SSH host keys,
+so clear the old one with `ssh-keygen -R <pi-address>`.
 
-To reach the card without a card reader: power the Pi with no card (it waits
-in USB boot mode), insert the card, then run
-`rpiboot -d "$(brew --prefix rpiboot)/share/rpiboot/msd"`. The card first
-needs a FAT32 (MBR) format.
+Builds are reproducible: the same inputs give the same
+`out/card-<hostname>.manifest`. The generated `image/packages.lock` lists the
+packages cached on the card, with hashes, so updates from Alpine's mirrors
+show up as a diff.
 
-The Pi runs Alpine diskless: it reinstalls the configured packages from the
-card at every boot, offline. It joins Wi-Fi with root SSH by key, loads the
-patched modules, and exposes the USB debug console (`pi_console.py`), or
-starts the `[boot] gadget`.
-
-## 3. Clone and verify
+## Use the clone
 
 ```bash
 ssh root@<pi> sh /etc/usbpi/gadget.sh up /etc/usbpi/gadgets/mydevice.plan
-cd ../usb-capture && .venv/bin/python capture_usb.py capture --vid <vid> --pid <pid> --bus <bus> -o captures/clone.json
-.venv/bin/python capture_usb.py compare captures/mydevice.json captures/clone.json
-ssh root@<pi> sh /etc/usbpi/gadget.sh down clone        # back to the debug console
+ssh root@<pi> sh /etc/usbpi/gadget.sh down clone       # back to the debug console
+ssh root@<pi> sh /etc/usbpi/gadget.sh list
 ```
 
-To try a plan without rebuilding the card, generate it with `gadget_plan.py`,
-copy it over and run `gadget.sh up`. To try new modules, copy them over and run
-`sh /etc/usbpi/pi_kmods.sh swap DIR`. On the Pi, the `Capture Rate` ALSA control
-is 0 until the host starts playing; recording (`arecord -D hw:0,0`) fails with an
-I/O error until then.
+To verify it, capture the clone with usb-capture and compare it with the
+original:
+
+```bash
+cd ../usb-capture
+.venv/bin/python capture_usb.py capture --vid <vid> --pid <pid> --bus <bus> -o captures/clone.json
+.venv/bin/python capture_usb.py compare captures/mydevice.json captures/clone.json
+```
+
+**Audio on the Pi:** the clone is ALSA card `hw:0,0`. Host playback arrives
+as capture, and the device's mic is playback. The `Capture Rate` control
+(`amixer -c 0 cget iface=PCM,name='Capture Rate'`) is 0 until the host starts
+streaming, and recording fails with an I/O error until then. So wait for it to
+be non-zero, and reopen when it drops back to 0. `Playback Rate` does the same
+for the mic direction.
+
+**Faster iteration, without rebuilding the card:**
+- **Plans:** run `gadget_plan.py CAPTURE -o x.plan`, copy it to the Pi, then
+  run `gadget.sh up x.plan`.
+- **Modules:** copy `out/modules/*.ko` to the Pi, then run
+  `sh /etc/usbpi/pi_kmods.sh swap DIR`.
+
+Changes made on the Pi itself are lost at reboot unless saved with
+`lbu commit`. Better to put them in the image config.
 
 ## Kernel patches (`alpine-module/patches/`)
 
 Built against the exact source of Alpine's `linux-rpi` 6.18.52 (checked
-against the APKBUILD's sha512sums). The headers package is cached in the
-Docker volume in case Alpine's mirror moves on.
+against the APKBUILD's sha512sums). The matching headers package is cached in
+a Docker volume in case Alpine's mirror moves on. `build_card.py` refuses
+modules built for a different kernel than the configured release's.
 
 - **0001 `f_uac1`:**
   - correct full-speed descriptors: stock reused the high-speed `bInterval`
@@ -97,5 +179,30 @@ Docker volume in case Alpine's mirror moves on.
   - an empty manufacturer, product or serial gets string index 0
   - `hide_strings` keeps a string (and its ID) without referencing it
 
-Not reproduced: strings beyond a contiguous run 1..N (the GameBuds had one at
-index 33). Only probing tools ask for those.
+## Limits
+
+- **Classes:** UAC1, UAC2 and HID functions are reproduced. Other interface
+  classes are reported and skipped.
+- **Audio formats:** only the first alternate audio format per direction.
+- **Languages:** English (`0x409`) strings only.
+- **String gaps:** strings beyond a contiguous run 1..N can't be placed. The
+  GameBuds had an extra one at index 33.
+- **Speed:** the Pi's controller is USB 2.0. Full and high speed only.
+- **Not in a capture:** vendor requests, timing, error behavior and what the
+  HID interfaces send at runtime.
+
+## Layout
+
+| Path | What it is |
+|---|---|
+| `image/template.toml` | Template image config (copy to `image/<name>.toml`) |
+| `image/overlay/` | Static files for the card's Alpine overlay (startup scripts, network) |
+| `image/packages.lock` | Generated: packages cached on the card, with hashes |
+| `build_card.py` | Mac: build and install the card |
+| `gadget_plan.py` | Mac: capture → plan |
+| `gadget.sh` | Pi: apply a plan (`up` / `down` / `list`) |
+| `gadgets/*.plan` | Generated plans (gitignored) |
+| `alpine-module/` | Patched gadget modules, built in Docker; `pi_kmods.sh` loads them on the Pi |
+| `pi_console.py` | Mac: run commands over the Pi's USB serial debug console |
+| `wifi_config.py` | `wifi.local` parsing, shared with the Buildroot tree |
+| `buildroot/` | Buildroot tree for a self-contained image: builds, not yet booted or patched |
