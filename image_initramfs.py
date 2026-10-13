@@ -359,6 +359,12 @@ def add_users(tree, scripts):
                                opts.get("-s", "/bin/sh")])
                 shadow.append([name, "!", "", "0", "", "", "", "", ""])
 
+    # root logs in with its key over SSH, and the debug console is a shell
+    # without login, so root needs no password: "*" matches none. ("!" would
+    # also lock out key logins: sshd without PAM treats it as a locked account.)
+    for r in shadow:
+        if r[0] == "root":
+            r[1] = "*"
     tree.file("etc/passwd", "".join(":".join(r) + "\n" for r in passwd).encode())
     tree.file("etc/group", "".join(":".join(r) + "\n" for r in group).encode())
     tree.file("etc/shadow", "".join(":".join(r) + "\n" for r in shadow).encode(), 0o640, "root", "shadow")
