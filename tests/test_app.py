@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import tarfile
+import tempfile
 import unittest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -68,6 +69,7 @@ class Config(unittest.TestCase):
         for change, what in [
             (lambda a, c: a.update(name="Bad Name"), "name"),
             (lambda a, c: a.update(name="logs"), "name"),
+            (lambda a, c: a.update(name="boot"), "name"),
             (lambda a, c: a.update(owns=["sound"]), "owns"),
             (lambda a, c: (a.update(owns=["wifi"]), c["access"].update(wifi="pi.toml")), "owns wifi"),
             (lambda a, c: a.update(files={"x": "missing.sh"}), "files"),
@@ -147,6 +149,36 @@ class Files(unittest.TestCase):
         for p in ("image/app.sh", "image/init", "gadget.sh", "examples/heartbeat/app/run.sh"):
             with self.subTest(p):
                 subprocess.run(["sh", "-n", os.path.join(REPO, p)], check=True)
+
+
+class Install(unittest.TestCase):
+    def test_keeps_state_and_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            card, target = os.path.join(tmp, "build"), os.path.join(tmp, "card")
+            for d, files in ((card, {"boot/initrd.img": "new", "config.txt": "new"}),
+                             (target, {".alpine-release": "", "boot/initrd.img": "old", "stale.txt": "old",
+                                       "heartbeat/boots": "7", "logs/last/app.log": "log", "other/x": "old"})):
+                for p, text in files.items():
+                    os.makedirs(os.path.dirname(os.path.join(d, p)), exist_ok=True)
+                    with open(os.path.join(d, p), "w") as f:
+                        f.write(text)
+            expected = bc.manifest(card)
+            keep = bc.kept_on_card(load())
+            self.assertEqual(keep, ["heartbeat", "logs"])
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                bc.install(card, target, expected, keep)
+            self.assertIn("keeping the app's heartbeat/, logs/", out.getvalue())
+            got = sorted(os.path.relpath(os.path.join(r, n), target) for r, _, ns in os.walk(target) for n in ns)
+            self.assertEqual(got, ["boot/initrd.img", "config.txt", "heartbeat/boots", "logs/last/app.log"])
+            self.assertEqual(bc.read(os.path.join(target, "heartbeat/boots")), b"7")
+            self.assertEqual(bc.read(os.path.join(target, "boot/initrd.img")), b"new")
+
+    def test_nothing_kept_without_state(self):
+        cfg = load()
+        cfg["app"].update(state=False, keep_logs=False)
+        self.assertEqual(bc.kept_on_card(cfg), [])
+        del cfg["app"]
+        self.assertEqual(bc.kept_on_card(cfg), [])
 
 
 class Diskless(unittest.TestCase):

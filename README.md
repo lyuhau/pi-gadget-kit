@@ -120,7 +120,8 @@ per kind from 0 as captures are (`hid.0`). The card lists them in
 3. A new card needs one FAT32 format. Check the disk number first with
    `diskutil list external`:
    `diskutil eraseDisk FAT32 ALPINE MBRFormat /dev/diskN`.
-4. Install, which replaces the card's contents and verifies every file:
+4. Install, which replaces the card's contents (except an [app](#apps)'s
+   state folder and logs) and verifies every file:
    `.venv/bin/python build_card.py config/pi.toml --install /Volumes/ALPINE`,
    then `diskutil eject /Volumes/ALPINE`.
 5. Replug the Pi with the card in. It boots (30–40 s diskless, see below):
@@ -228,7 +229,7 @@ kmods = ["snd_aloop"]               # stock modules to ship and load before run
   no `chronyd`/`ntpd`.
 - **state:** the card is mounted read-write and the app's folder on it
   (created) is bound to `/var/lib/NAME`. No card (booted over USB): that
-  folder is in RAM. It's FAT and the Pi loses power any time: write a new
+  folder is in RAM. `--install` keeps it (and `logs/`). It's FAT and the Pi loses power any time: write a new
   file, `fsync`, rename, `sync`.
 - **keep_logs:** at start, the card's `logs/last` becomes `logs/prev`; every
   10 minutes from a minute in, and at shutdown, `/var/log/*` is copied to

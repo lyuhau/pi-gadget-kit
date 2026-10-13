@@ -67,6 +67,8 @@ CONFIG_KEYS = {
 OWNABLE = {"wifi", "time"}
 CARD = "/media/mmcblk0p1"  # the card's FAT partition on the Pi, in both image types
 GADGET = "/sys/kernel/config/usb_gadget/device"
+# Top-level folders of a card (both image types, and keep_logs'): not an app's name.
+CARD_NAMES = {"logs", "boot", "overlays", "apks", "cache", "kmods"}
 
 # Fixed plumbing rather than config: changing these mostly breaks Wi-Fi, SSH
 # or USB device mode.
@@ -465,13 +467,27 @@ def manifest(card):
     return "\n".join(sorted(lines, key=lambda l: l[66:])) + "\n"
 
 
-def install(card, target, expected):
+def kept_on_card(cfg):
+    """What --install leaves on the card: the app's state folder and logs."""
+    app = cfg.get("app") or {}
+    return ([app["name"]] if app.get("state") else []) + (["logs"] if app.get("keep_logs") else [])
+
+
+def install(card, target, expected, keep=()):
+    """Replace the card's contents with the build, except the top-level
+    folders in `keep` (an app's state and logs), and verify the copy."""
+    clash = [k for k in keep if os.path.exists(os.path.join(card, k))]
+    if clash:
+        sys.exit(f"the build has {', '.join(clash)}, which --install keeps on the card")
     if not os.path.exists(os.path.join(target, ".alpine-release")) and \
             [f for f in os.listdir(target) if not f.startswith(".")]:
         sys.exit(f"{target} isn't empty and doesn't look like an Alpine card; not touching it")
     step(f"installing to {target}")
+    kept = sorted(k for k in keep if os.path.isdir(os.path.join(target, k)))
+    if kept:
+        print(f"keeping the app's {', '.join(k + '/' for k in kept)} on the card")
     for name in os.listdir(target):
-        if name in (".Spotlight-V100", ".fseventsd", ".Trashes"):
+        if name in (".Spotlight-V100", ".fseventsd", ".Trashes") or name in keep:
             continue
         p = os.path.join(target, name)
         shutil.rmtree(p) if os.path.isdir(p) and not os.path.islink(p) else os.remove(p)
@@ -534,8 +550,9 @@ def validate_app(cfg, path):
     def bad(msg):
         sys.exit(f"{path}: [app] {msg} (see README: Apps)")
 
-    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", app.get("name", "")) or app["name"] == "logs":
-        bad('name: lowercase letters, digits, "-" and "_" (not "logs"), e.g. name = "myapp"')
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", app.get("name", "")) or app["name"] in CARD_NAMES:
+        bad('name: lowercase letters, digits, "-" and "_" (not a folder the card has, such as "logs"), '
+            'e.g. name = "myapp"')
     for key in ("run",):
         if not isinstance(app.get(key, ""), str):
             bad(f"{key} is a string")
@@ -617,7 +634,7 @@ def main():
     print(f"{text.count(chr(10))} files, manifest sha256 {digest[:16]}  ({os.path.relpath(mpath, REPO)})")
 
     if a.install:
-        install(card, a.install, text)
+        install(card, a.install, text, kept_on_card(cfg))
 
 
 if __name__ == "__main__":
