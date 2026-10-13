@@ -1,4 +1,4 @@
-"""wifi.local (gitignored) -> wpa_supplicant values. Shared by build_card.py and
+"""config/wifi.local (gitignored) -> wpa_supplicant values. Shared by build_card.py and
 buildroot/make_local_overlay.py."""
 import sys
 

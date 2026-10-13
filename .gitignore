@@ -3,11 +3,9 @@ __pycache__/
 *.img
 *.img.xz
 .DS_Store
-wifi.local
 buildroot/local/
 out/
-image/*.toml
-!image/template.toml
-# the device description and its generated plan (yours, not the template's)
-/*.json
-/device.plan
+# Your settings. This template repo ignores them all; a project made from
+# the template commits config/ but keeps wifi.local ignored.
+/config/
+wifi.local

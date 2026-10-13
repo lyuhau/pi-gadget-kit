@@ -4,12 +4,12 @@ Turn a device description into a gadget plan: the exact configfs
 directories, attribute writes and links that make a Linux USB gadget present
 itself as described. gadget.sh replays a plan on the Pi.
 
-  gadget_plan.py device.json -o device.plan
-  gadget_plan.py device.json --max-speed high-speed --test-ids
-  gadget_plan.py device.json --stock     # for unpatched gadget modules
+  gadget_plan.py config/device.json -o out/device.plan
+  gadget_plan.py config/device.json --max-speed high-speed --test-ids
+  gadget_plan.py config/device.json --stock     # for unpatched gadget modules
 
 A device description is a JSON in usb-capture's format (capture_usb.py,
-~/Code/usb-capture): capture a real device and copy the file here, or write
+~/Code/usb-capture): capture a real device and copy it to config/device.json, or write
 one.
 
 Only the description's "model" is read (usb-capture README: Capture format). Plans are

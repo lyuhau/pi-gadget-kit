@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
-Build the Pi's SD card contents from an image config (image/pi.toml).
+Build the Pi's SD card contents from an image config (config/pi.toml).
 
-  build_card.py image/pi.toml                          # -> out/card-<hostname>/
-  build_card.py image/pi.toml --install /Volumes/ALPINE
-  build_card.py image/pi.toml --refetch                # re-download cached packages
+  build_card.py config/pi.toml                          # -> out/card-<hostname>/
+  build_card.py config/pi.toml --install /Volumes/ALPINE
+  build_card.py config/pi.toml --refetch                # re-download cached packages
+
+Relative paths in the config (device description, Wi-Fi file, modules) are
+relative to the config file.
 
 Steps:
   1. Alpine release tarball, verified against [alpine] sha256 (cached in out/cache/)
   2. patched kernel modules from [kernel_modules], checked against its kernel
-  3. the [device] plan, written to device.plan and the card
+  3. the [device] plan, written to out/device.plan and the card
   4. packages Alpine doesn't bundle, downloaded into the card's apk cache via
      Docker; their files and hashes go in image/packages.lock
   5. the apkovl overlay: image/overlay/ plus files generated from the config
@@ -43,8 +46,12 @@ OUT = os.path.join(REPO, "out")
 MTIME = 946684800  # fixed timestamp (2000-01-01) so the overlay is reproducible
 
 
+CONFIG_DIR = REPO  # set from the config file's location in main()
+
+
 def rel(path):
-    return os.path.join(REPO, os.path.expanduser(path))
+    """A path from the config: relative to the config file, ~ expanded."""
+    return os.path.join(CONFIG_DIR, os.path.expanduser(path))
 
 
 def sha256(path):
@@ -120,12 +127,12 @@ def make_plan(cfg):
                                          max_speed=dev.get("max_speed") or None,
                                          test_ids=dev.get("test_ids", False))
     text = text.replace(f"from {rel(dev['description'])}", f"from {dev['description']}")
-    path = os.path.join(REPO, "device.plan")
+    path = os.path.join(OUT, "device.plan")
     old = open(path).read() if os.path.exists(path) else None
     with open(path, "w") as f:
         f.write(text)
     state = "unchanged" if old == text else "updated" if old else "new"
-    print(f"device.plan: {len(p.ops)} operations ({state})")
+    print(f"out/device.plan: {len(p.ops)} operations ({state})")
     for n in p.notes:
         print(f"  note: {n}")
     return text
@@ -323,6 +330,9 @@ def main():
     p.add_argument("--refetch", action="store_true", help="download the release and packages again")
     a = p.parse_args()
 
+    global CONFIG_DIR
+    CONFIG_DIR = os.path.dirname(os.path.abspath(a.config))
+    os.makedirs(OUT, exist_ok=True)
     with open(a.config, "rb") as f:
         cfg = tomllib.load(f)
     validate(cfg, a.config)

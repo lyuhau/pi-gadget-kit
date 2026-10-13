@@ -10,17 +10,17 @@ template for a project that needs a Pi to act as a USB device.
 ## How it fits together
 
 ```
-device.json ─────► gadget_plan.py ─► device.plan ─┐
-image/<name>.toml ─► build_card.py ─► card files ─┴─► Pi: gadget.sh up
+config/device.json ─► gadget_plan.py ─► out/device.plan ─┐
+config/pi.toml ─────► build_card.py ──► card files ───────┴─► Pi: gadget.sh up
 ```
 
-- **Device description** (`device.json`): what the Pi should present, in
+- **Device description** (`config/device.json`): what the Pi should present, in
   the format of the sibling project [usb-capture](../usb-capture). Capture a
   real device there and copy the file here, or write one. This repo reads only
   its `model`; that README describes the format.
 - **Plan:** `gadget_plan.py` turns the description plus options into the
   exact configfs operations that present it.
-- **Image config** (`image/<name>.toml`): everything on the Pi's card. That
+- **Image config** (`config/pi.toml`): everything on the Pi's card. That
   covers the Alpine release, packages, services, access, patched modules, and
   the device and whether it starts at boot.
 - **Card:** `build_card.py` builds the card from the config, reproducibly.
@@ -44,26 +44,26 @@ macOS version, which crashes pip.
 
 ## Set up
 
-1. **Wi-Fi and SSH.** Create `wifi.local` (gitignored). The Zero 2 W only
-   does 2.4 GHz:
+Your settings live in `config/`: three files, plus your SSH key.
 
-   ```
-   SSID=MyNetwork
-   PASSWORD=...
-   COUNTRY=US
-   ```
+```
+config/
+  pi.toml       # the image config: everything on the card
+  device.json   # the USB device the Pi presents
+  wifi.local    # Wi-Fi secrets
+```
 
-   Root logs in over SSH with the public key named in the image config
-   (default `~/.ssh/id_ed25519.pub`); there's no password login.
+This template repo ignores `config/`. A project made from it commits
+`config/`, but keeps `wifi.local` ignored. Relative paths in `pi.toml` are
+relative to `config/`.
 
-2. **Device and image config.** Put the device description at
-   `device.json`, e.g. a capture copied from usb-capture. Then copy the
-   template and adjust its `[device]` section:
+1. **Image config.** Copy the template:
 
    ```bash
-   cp ../usb-capture/captures/mydevice.json device.json
-   cp image/template.toml image/pi.toml      # this repo ignores device.json and image/*.toml besides the template
+   mkdir -p config && cp image/template.toml config/pi.toml
    ```
+
+   Its `[device]` section:
 
    ```toml
    [device]
@@ -73,10 +73,25 @@ macOS version, which crashes pip.
    start_at_boot = false  # true: present the device at power-on instead of the debug console
    ```
 
-   A project made from this template can commit its own `device.json` and
-   config.
+2. **Device description.** Put it at `config/device.json`, e.g. a capture
+   from usb-capture:
 
-3. **Patched kernel modules:**
+   ```bash
+   cp ../usb-capture/captures/mydevice.json config/device.json
+   ```
+
+3. **Wi-Fi.** Create `config/wifi.local`. The Zero 2 W only does 2.4 GHz:
+
+   ```
+   SSID=MyNetwork
+   PASSWORD=...
+   COUNTRY=US
+   ```
+
+   Root logs in over SSH with the public key named under `[access]` (default
+   `~/.ssh/id_ed25519.pub`); there's no password login.
+
+4. **Patched kernel modules:**
 
    ```bash
    alpine-module/build.sh            # -> out/modules/, about 15 s after the first run
@@ -85,7 +100,7 @@ macOS version, which crashes pip.
 ## Build and install the card
 
 ```bash
-.venv/bin/python build_card.py image/pi.toml        # -> out/card-<hostname>/ + manifest
+.venv/bin/python build_card.py config/pi.toml        # -> out/card-<hostname>/ + manifest
 ```
 
 To get the card onto the Mac without a card reader:
@@ -109,7 +124,7 @@ diskutil eraseDisk FAT32 ALPINE MBRFormat /dev/diskN
 Then install, which replaces the card's contents and verifies every file:
 
 ```bash
-.venv/bin/python build_card.py image/pi.toml --install /Volumes/ALPINE
+.venv/bin/python build_card.py config/pi.toml --install /Volumes/ALPINE
 ```
 
 Eject the card and replug the Pi with the card in. It boots in about 30
@@ -143,7 +158,7 @@ be non-zero, and reopen when it drops back to 0. `Playback Rate` does the same
 for the mic direction.
 
 **Faster iteration, without rebuilding the card:**
-- **Plans:** run `gadget_plan.py device.json -o x.plan`, copy it to the Pi,
+- **Plans:** run `gadget_plan.py config/device.json -o x.plan`, copy it to the Pi,
   then run `gadget.sh up x.plan`.
 - **Modules:** copy `out/modules/*.ko` to the Pi, then run
   `sh /etc/usb-gadget/pi_kmods.sh swap DIR`.
@@ -202,14 +217,15 @@ its data paths too.
 
 | Path | What it is |
 |---|---|
-| `image/template.toml` | Template image config (copy to `image/<name>.toml`) |
+| `image/template.toml` | Template image config (copy to `config/pi.toml`) |
 | `image/overlay/` | Static files for the card's Alpine overlay (startup scripts, network) |
 | `image/packages.lock` | Generated: packages cached on the card, with hashes |
 | `build_card.py` | Mac: build and install the card |
 | `gadget_plan.py` | Mac: device description → plan |
 | `gadget.sh` | Pi: apply a plan (`up` / `down` / `list`) |
-| `device.json`, `device.plan` | Your device description and its generated plan (gitignored here) |
+| `config/` | Your settings: `pi.toml`, `device.json`, `wifi.local` (gitignored here) |
+| `out/` | Build output: modules, `device.plan`, card contents, manifests (gitignored) |
 | `alpine-module/` | Patched gadget modules, built in Docker; `pi_kmods.sh` loads them on the Pi |
 | `pi_console.py` | Mac: run commands over the Pi's USB serial debug console |
-| `wifi_config.py` | `wifi.local` parsing, shared with the Buildroot tree |
+| `wifi_config.py` | `config/wifi.local` parsing, shared with the Buildroot tree |
 | `buildroot/` | Buildroot tree for a self-contained image: builds, not yet booted or patched |

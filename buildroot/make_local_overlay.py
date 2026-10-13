@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Write the per-user rootfs overlay (gitignored): Wi-Fi config from
-wifi.local and your SSH public key."""
+config/wifi.local and your SSH public key."""
 import os
 import sys
 
@@ -9,7 +9,7 @@ REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO)
 from wifi_config import read_wifi, wpa_quote  # noqa: E402
 
-wifi = read_wifi(os.path.join(REPO, "wifi.local"))
+wifi = read_wifi(os.path.join(REPO, "config", "wifi.local"))
 pubkey = open(os.path.expanduser("~/.ssh/id_ed25519.pub")).read().strip()
 root = os.path.join(HERE, "local", "overlay")
 

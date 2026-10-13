@@ -1,7 +1,8 @@
 # Template for an image config: everything that ends up on the Pi's SD card.
-# Copy it to image/<name>.toml (gitignored), add your gadgets, then:
-#   build_card.py image/<name>.toml [--install /Volumes/ALPINE]
-# Secrets stay in the files referenced under [access].
+# Copy it to config/pi.toml, put your device.json and wifi.local next to it, then:
+#   build_card.py config/pi.toml [--install /Volumes/ALPINE]
+# Relative paths below are relative to this file. Secrets stay in the files
+# referenced under [access].
 
 [alpine]
 # The alpine-rpi release, from
@@ -42,7 +43,7 @@ boot = ["local"]
 default = ["wpa_supplicant", "networking", "sshd", "chronyd"]
 
 [access]
-wifi = "wifi.local"      # file with SSID, PASSWORD, COUNTRY lines (gitignored)
+wifi = "wifi.local"      # file with SSID, PASSWORD, COUNTRY lines (always gitignored)
 ssh_public_key = "~/.ssh/id_ed25519.pub"  # root login, key only
 debug_console = true     # USB serial root shell until a gadget takes the port
 
@@ -50,7 +51,7 @@ debug_console = true     # USB serial root shell until a gadget takes the port
 # Patched gadget modules (alpine-module/build.sh output), loaded at boot in
 # this order before anything can pull in the stock ones. Remove this section
 # to use Alpine's stock modules (gadget plans are then made for those).
-dir = "out/modules"
+dir = "../out/modules"
 load = ["libcomposite", "u_audio", "u_serial", "usb_f_acm", "usb_f_uac1", "usb_f_hid"]
 
 # The USB device the Pi presents (it can be composite: several interfaces).
@@ -58,7 +59,7 @@ load = ["libcomposite", "u_audio", "u_serial", "usb_f_acm", "usb_f_uac1", "usb_f
 # real device with ~/Code/usb-capture and copy the file here, or write one.
 # Remove this section for a Pi that only offers the debug console.
 [device]
-description = "device.json"   # relative to this repo (/device.json is gitignored)
+description = "device.json"
 max_speed = ""         # "" = as described, or "full-speed" / "high-speed"
 test_ids = false       # true: VID:PID 1209:0001 instead of the described IDs
 start_at_boot = false  # false: boot to the debug console; start it with gadget.sh up
