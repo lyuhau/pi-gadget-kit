@@ -62,9 +62,10 @@ class HandWritten(unittest.TestCase):
 
     def test_minimal_audio_defaults(self):
         ops = self.plan([{"kind": "uac2", "host_to_device": {}, "device_to_host": {"channels": 1}}]).ops
-        # an empty table is an absent direction
-        self.assertIn("write functions/uac2.0/c_chmask 0", ops)
+        self.assertIn("write functions/uac2.0/c_chmask 3", ops)  # an empty table: all defaults
         self.assertIn("write functions/uac2.0/p_chmask 1", ops)
+        ops = self.plan([{"kind": "uac2", "host_to_device": False, "device_to_host": {}}]).ops
+        self.assertIn("write functions/uac2.0/c_chmask 0", ops)  # absent direction
         self.assertIn("write functions/uac2.0/p_srate 48000", ops)
         self.assertIn("write functions/uac2.0/p_volume_present 0", ops)
 

@@ -374,7 +374,7 @@ DEVICE_DEFAULTS = {"idVendor": None, "idProduct": None, "bcdDevice": 0x0100, "bc
 
 
 def complete_stream(where, d):
-    if not d:
+    if d is None or d is False:  # absent; an empty table is all defaults
         return None
     check_keys(where, d, set(ALT_DEFAULTS) | set(STREAM_DEFAULTS))
     st = {k: d.get(k, v) for k, v in STREAM_DEFAULTS.items()}
