@@ -19,9 +19,15 @@ hostname -F /etc/hostname
 ip link set lo up
 syslogd
 
-# busybox reboot/halt/poweroff signal PID 1
+# busybox reboot/halt/poweroff signal PID 1. A shell runs a trap only once
+# its current foreground command has finished, so after this PID 1 runs
+# nothing in the foreground: the boot sequence below is a background job and
+# PID 1 only waits. Shutdown is traced to boot.log, in case it gets stuck.
 stop() {
-	kill -TERM -1; sleep 1; sync
+	trap '' TERM USR1 USR2
+	set -x
+	kill -TERM -1; sleep 1; kill -KILL -1
+	sync
 	umount /media/mmcblk0p1
 	"$1" -f
 }
@@ -29,6 +35,7 @@ trap 'stop reboot' TERM
 trap 'stop halt' USR1
 trap 'stop poweroff' USR2
 
+(
 # Boot modules (/etc/modules: Wi-Fi driver, dwc2), then what OpenRC's "local"
 # service runs: /etc/local.d (patched gadget modules, debug console, device).
 for m in $(cat /etc/modules); do modprobe "$m"; done
@@ -54,8 +61,9 @@ mkdir -p /media/mmcblk0p1
 fsck.fat -a /dev/mmcblk0p1 >/var/log/fsck.log 2>&1
 mount -t vfat -o ro /dev/mmcblk0p1 /media/mmcblk0p1
 
-set +x
 echo "boot done"
+) &
+set +x
 # reap orphans; the traps above run here
 while :; do
 	sleep 3600 &
