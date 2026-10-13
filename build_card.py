@@ -3,6 +3,7 @@
 Build the Pi's SD card contents from an image config (config/pi.toml).
 
   build_card.py config/pi.toml                          # -> out/card-<hostname>/
+  build_card.py config/pi-release.toml                  # -> out/card-<hostname>-release/
   build_card.py config/pi.toml --install /Volumes/ALPINE
   build_card.py config/pi.toml --refetch                # re-download cached packages
 
@@ -17,6 +18,7 @@ Steps:
      list of its functions, /etc/usb-gadget/functions)
   4. packages Alpine doesn't bundle, downloaded into the card's apk cache via
      Docker; their files and hashes go in packages.lock next to the config
+     (pi-NAME.packages.lock for a config called pi-NAME.toml)
   5. the apkovl overlay: image/overlay/ plus files generated from the config
      and the secrets under [access]
   6. a manifest of every file's sha256 (out/card-<hostname>.manifest)
@@ -50,6 +52,7 @@ REPO = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(REPO, "out")
 MTIME = 946684800  # fixed timestamp (2000-01-01) so the overlay is reproducible
 CONFIG_DIR = REPO  # set from the config file's location in main()
+VARIANT = ""  # set in main(): "" for pi.toml, "-release" for pi-release.toml (see names())
 
 # What an image config may set; anything else is rejected as a likely mistake.
 CONFIG_KEYS = {
@@ -114,6 +117,20 @@ def load_config(path, seen=()):
 def platform_wifi(cfg):
     """Whether the platform joins Wi-Fi itself: [access] wifi is set."""
     return bool(cfg["access"].get("wifi"))
+
+
+def names(config_path, host):
+    """Where a config's build goes: out/card-HOST[-VARIANT]/, its manifest,
+    out/device[-VARIANT].plan, and its lock next to it. pi.toml has no variant
+    (out/card-HOST, packages.lock); any other config's file name is one, less
+    a "pi-" prefix (pi-release.toml: out/card-HOST-release,
+    pi-release.packages.lock), so a project's configs don't overwrite each
+    other's builds. -> (variant, card dir, lock path)"""
+    stem = os.path.splitext(os.path.basename(config_path))[0]
+    variant = "" if stem == "pi" else "-" + (stem[3:] if stem.startswith("pi-") and stem != "pi-" else stem)
+    lock = os.path.join(os.path.dirname(os.path.abspath(config_path)),
+                        "packages.lock" if stem == "pi" else f"{stem}.packages.lock")
+    return variant, os.path.join(OUT, f"card-{host}{variant}"), lock
 
 
 def rel(path):
@@ -223,12 +240,12 @@ def make_plan(cfg):
     text, p = gadget_plan.plan_from_file(rel(dev["description"]), max_speed=dev.get("max_speed") or None,
                                          test_ids=dev.get("test_ids", False), console=dev.get("console", False))
     text = text.replace(f"from {rel(dev['description'])}", f"from {dev['description']}")
-    path = os.path.join(OUT, "device.plan")
+    path = os.path.join(OUT, f"device{VARIANT}.plan")
     old = open(path).read() if os.path.exists(path) else None
     with open(path, "w") as f:
         f.write(text)
     state = "unchanged" if old == text else "updated" if old else "new"
-    print(f"out/device.plan: {len(p.ops)} operations ({state})")
+    print(f"{os.path.relpath(path, REPO)}: {len(p.ops)} operations ({state})")
     for n in p.notes:
         print(f"  note: {n}")
     return text, gadget_plan.functions_text(p)
@@ -242,7 +259,7 @@ def bundled_packages(card, arch):
     return {line[2:] for line in text.splitlines() if line.startswith("P:")}
 
 
-def fetch_packages(cfg, card, refetch):
+def fetch_packages(cfg, card, refetch, lock_path):
     """Download packages that aren't on the release media (with dependencies)
     into an apk cache, as a Pi would with /etc/apk/cache on the card. Uses an
     Alpine container of the same release and architecture."""
@@ -269,7 +286,6 @@ def fetch_packages(cfg, card, refetch):
     files = sorted(f for f in os.listdir(cache) if not f.startswith("."))
     shutil.copytree(cache, os.path.join(card, "cache"), ignore=shutil.ignore_patterns(".*"))
     lock = "".join(f"{sha256(os.path.join(cache, f))}  {f}\n" for f in files if f.endswith(".apk"))
-    lock_path = os.path.join(CONFIG_DIR, "packages.lock")
     old = open(lock_path).read() if os.path.exists(lock_path) else None
     with open(lock_path, "w") as f:
         f.write("# packages downloaded into the card's apk cache (build_card.py)\n" + lock)
@@ -554,13 +570,13 @@ def main():
     p.add_argument("--refetch", action="store_true", help="download the release and packages again")
     a = p.parse_args()
 
-    global CONFIG_DIR
+    global CONFIG_DIR, VARIANT
     CONFIG_DIR = os.path.dirname(os.path.abspath(a.config))
     os.makedirs(OUT, exist_ok=True)
     cfg = load_config(a.config)
     validate(cfg, a.config)
     host = cfg["system"]["hostname"]
-    card = os.path.join(OUT, f"card-{host}")
+    VARIANT, card, lock_path = names(a.config, host)
     shutil.rmtree(card, ignore_errors=True)
     os.makedirs(card)
 
@@ -570,8 +586,7 @@ def main():
         import image_initramfs
         step("device plan")
         plan = make_plan(cfg)
-        image_initramfs.build(cfg, tarball, card, config_files(cfg, plan), a.refetch,
-                              os.path.join(CONFIG_DIR, "packages.lock"))
+        image_initramfs.build(cfg, tarball, card, config_files(cfg, plan), a.refetch, lock_path)
     else:
         extract(tarball, card)
         print(f"alpine-rpi {cfg['alpine']['version']} {cfg['alpine']['arch']}, kernel {kernel_release(card)}")
@@ -580,7 +595,7 @@ def main():
         step("device plan")
         plan = make_plan(cfg)
         step("packages")
-        cached = fetch_packages(cfg, card, a.refetch)
+        cached = fetch_packages(cfg, card, a.refetch, lock_path)
         step("overlay")
         name, data, n = overlay(cfg, plan, cached)
         with open(os.path.join(card, name), "wb") as f:
@@ -595,7 +610,7 @@ def main():
 
     step("manifest")
     text = manifest(card)
-    mpath = os.path.join(OUT, f"card-{host}.manifest")
+    mpath = card + ".manifest"
     with open(mpath, "w") as f:
         f.write(text)
     digest = hashlib.sha256(text.encode()).hexdigest()

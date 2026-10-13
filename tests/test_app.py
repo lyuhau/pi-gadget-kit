@@ -56,6 +56,14 @@ class Config(unittest.TestCase):
         validate(dev)
         validate(rel)
 
+    def test_names(self):
+        out = bc.OUT
+        self.assertEqual(bc.names("config/pi.toml", "h"),
+                         ("", f"{out}/card-h", os.path.abspath("config/packages.lock")))
+        self.assertEqual(bc.names("config/pi-release.toml", "h"),
+                         ("-release", f"{out}/card-h-release", os.path.abspath("config/pi-release.packages.lock")))
+        self.assertEqual(bc.names("/x/dev.toml", "h"), ("-dev", f"{out}/card-h-dev", "/x/dev.packages.lock"))
+
     def test_rejects(self):
         for change, what in [
             (lambda a, c: a.update(name="Bad Name"), "name"),

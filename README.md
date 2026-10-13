@@ -111,7 +111,9 @@ per kind from 0 as captures are (`hid.0`). The card lists them in
 
 1. Build: `.venv/bin/python build_card.py config/pi.toml`. Output goes to
    `out/card-<hostname>/`, and the same inputs always give the same
-   `out/card-<hostname>.manifest`.
+   `out/card-<hostname>.manifest`. Another config, say `pi-release.toml`,
+   builds to `out/card-<hostname>-release/`, with its own
+   `pi-release.packages.lock` and `out/device-release.plan`.
 2. Expose the card on the Mac: unplug the Pi, take the card out, plug the Pi
    in (with no card it waits in USB boot mode), insert the card, then run
    `rpiboot -d "$(brew --prefix rpiboot)/share/rpiboot/msd"`.
