@@ -397,6 +397,23 @@ def modinfo(ko):
     return []
 
 
+def dep_order(name, direct):
+    """All of a module's dependencies as modules.dep lists them: modprobe
+    loads them from the last to the first, so each module comes before
+    everything it depends on. `direct`: name -> its own dependencies."""
+    done, post = set(), []
+
+    def visit(n):  # post-order: a module after its dependencies
+        done.add(n)
+        for d in direct[n]:
+            if d not in done:
+                visit(d)
+        post.append(n)
+
+    visit(name)
+    return post[-2::-1]  # reversed, without the module itself
+
+
 def add_modules(tree, kernel_tar, release, patched):
     """The selected modules (uncompressed, so any modprobe loads them) with
     modules.dep/alias/softdep generated from their own modinfo."""
@@ -420,21 +437,13 @@ def add_modules(tree, kernel_tar, release, patched):
         mods[n] = (path, ko, modinfo(ko))
         wanted += [d for k, v in mods[n][2] if k == "depends" for d in v.split(",") if d]
 
-    def deps(n, seen):  # dependencies, deepest last (as depmod writes them)
-        for k, v in mods[n][2]:
-            if k == "depends":
-                for d in filter(None, v.split(",")):
-                    d = d.replace("-", "_")
-                    if d not in seen:
-                        seen.append(d)
-                        deps(d, seen)
-        return seen
-
+    direct = {n: [d.replace("-", "_") for k, v in info if k == "depends" for d in v.split(",") if d]
+              for n, (_, _, info) in mods.items()}
     dep, alias, softdep = [], [], []
     for n in sorted(mods):
         path, ko, info = mods[n]
         tree.file(base + path, ko)
-        dep.append(f"{path}: " + " ".join(mods[d][0] for d in deps(n, [])))
+        dep.append(f"{path}: " + " ".join(mods[d][0] for d in dep_order(n, direct)))
         alias += [f"alias {v} {n}" for k, v in info if k == "alias"]
         softdep += [f"softdep {n} {v}" for k, v in info if k == "softdep"]
     for name, text in (("modules.dep", dep), ("modules.alias", alias), ("modules.softdep", softdep)):
