@@ -1,0 +1,194 @@
+{
+ "tool": "capture_usb.py",
+ "model_format": 1,
+ "devices": [
+  {
+   "device_descriptor": {
+    "bDeviceClass": 0
+   },
+   "model": {
+    "format": 1,
+    "device": {
+     "idVendor": 4617,
+     "idProduct": 1,
+     "bcdDevice": 272,
+     "bcdUSB": 512,
+     "bDeviceClass": 0,
+     "bDeviceSubClass": 0,
+     "bDeviceProtocol": 0,
+     "bMaxPacketSize0": 64,
+     "iManufacturer": 1,
+     "iProduct": 2,
+     "iSerialNumber": 0
+    },
+    "speed": "full-speed",
+    "strings": {
+     "manufacturer": "",
+     "product": "",
+     "serialnumber": null,
+     "langids": [
+      1033
+     ],
+     "table": {
+      "1": "",
+      "2": "",
+      "3": "",
+      "4": "",
+      "5": ""
+     },
+     "referenced": [
+      1,
+      2
+     ]
+    },
+    "config": {
+     "bmAttributes": 128,
+     "configuration": null,
+     "max_power_ma": 100
+    },
+    "functions": [
+     {
+      "kind": "uac1",
+      "control_interface": 0,
+      "control_endpoints": 0,
+      "name": null,
+      "host_to_device": {
+       "interface": 1,
+       "alts": [
+        {
+         "alt": 1,
+         "terminal_link": 38,
+         "channels": 2,
+         "chmask": 3,
+         "subslot_bytes": 2,
+         "bit_resolution": 16,
+         "rates": [
+          48000
+         ],
+         "endpoint": 3,
+         "sync": "adaptive",
+         "wMaxPacketSize": 192,
+         "bInterval": 1,
+         "has_feedback_endpoint": false
+        }
+       ],
+       "alt_names": {
+        "0": null,
+        "1": null
+       },
+       "terminal_type": 770,
+       "terminal_type_name": "headphones",
+       "terminal_name": null,
+       "usb_terminal_name": null,
+       "terminal_id": 36,
+       "usb_terminal_id": 38,
+       "mute": true,
+       "volume": {
+        "channel": 0,
+        "min": -19712,
+        "max": 0,
+        "res": 1,
+        "source": "device"
+       },
+       "fu_name": null,
+       "fu_id": 34,
+       "fu_control_size": 1
+      },
+      "device_to_host": {
+       "interface": 2,
+       "alts": [
+        {
+         "alt": 1,
+         "terminal_link": 39,
+         "channels": 1,
+         "chmask": 1,
+         "subslot_bytes": 2,
+         "bit_resolution": 16,
+         "rates": [
+          48000
+         ],
+         "endpoint": 131,
+         "sync": "async",
+         "wMaxPacketSize": 96,
+         "bInterval": 1,
+         "has_feedback_endpoint": false
+        }
+       ],
+       "alt_names": {
+        "0": null,
+        "1": null
+       },
+       "terminal_type": 1026,
+       "terminal_type_name": "headset",
+       "terminal_name": null,
+       "usb_terminal_name": null,
+       "terminal_id": 35,
+       "usb_terminal_id": 39,
+       "mute": true,
+       "volume": {
+        "channel": 0,
+        "min": -21248,
+        "max": 0,
+        "res": 1,
+        "source": "device"
+       },
+       "fu_name": null,
+       "fu_id": 40,
+       "fu_control_size": 1
+      }
+     },
+     {
+      "kind": "hid",
+      "interface": 3,
+      "subclass": 0,
+      "protocol": 0,
+      "name": null,
+      "bcdHID": 272,
+      "country_code": 0,
+      "endpoint": 129,
+      "report_length": 64,
+      "bInterval": 1,
+      "has_out_endpoint": false,
+      "report_desc": "06c0ff0901a10106c1ff150026ff00750809f09540810209f19540910209f2960202b102c0"
+     },
+     {
+      "kind": "hid",
+      "interface": 4,
+      "subclass": 0,
+      "protocol": 0,
+      "name": null,
+      "bcdHID": 272,
+      "country_code": 0,
+      "endpoint": 130,
+      "report_length": 4,
+      "bInterval": 1,
+      "has_out_endpoint": false,
+      "report_desc": "050c0901a10109e909ea750195021500250181027506950181039503750109b609cd09b58102751595018103c0"
+     },
+     {
+      "kind": "hid",
+      "interface": 5,
+      "subclass": 0,
+      "protocol": 0,
+      "name": null,
+      "bcdHID": 272,
+      "country_code": 0,
+      "endpoint": 132,
+      "report_length": 64,
+      "bInterval": 1,
+      "has_out_endpoint": false,
+      "report_desc": "0600ff0901a1010601ff150026ff00750809f09540810209f195409102c0"
+     },
+     {
+      "kind": "other",
+      "interface": 6,
+      "class": 255,
+      "subclass": 0,
+      "protocol": 0,
+      "name": "vendor"
+     }
+    ]
+   }
+  }
+ ]
+}

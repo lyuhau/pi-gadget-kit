@@ -1,0 +1,5 @@
+# functions of gadget 'device' (gadget_plan.py): ID KIND DIRECTORY
+uac1.0 uac1 /sys/kernel/config/usb_gadget/device/functions/uac1.0
+hid.0 hid /sys/kernel/config/usb_gadget/device/functions/hid.0
+hid.1 hid /sys/kernel/config/usb_gadget/device/functions/hid.1
+hid.2 hid /sys/kernel/config/usb_gadget/device/functions/hid.2

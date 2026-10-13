@@ -1,0 +1,69 @@
+# Every hand-written setting gadget_plan.py knows, for the tests.
+speed = "high-speed"
+
+[device]
+idVendor = 0x1209
+idProduct = 0x0001
+bcdDevice = 0x0203
+bDeviceClass = 0
+bMaxPacketSize0 = 64
+
+[strings]
+manufacturer = "usb"
+product = "Kitchen Sink"
+
+[config]
+bmAttributes = 0xc0
+max_power_ma = 100
+
+[[functions]]
+kind = "uac2"
+id = "audio"
+name = "Audio Control"
+function_name = "Kitchen Audio"
+req_number = 4
+fb_max = 5
+
+[functions.host_to_device]
+chmask = 0x33
+rates = [44100, 48000, 96000]
+subslot_bytes = 3
+bit_resolution = 24
+sync = "adaptive"
+bInterval = 1
+mute = true
+volume = { min = -12800, max = 0, res = 256 }
+terminal_type = 0x0302
+terminal_name = "Headphones"
+usb_terminal_name = "Host Out"
+fu_name = "Volume"
+channel_names = "Stereo"
+clock_name = "Clock Out"
+
+[functions.device_to_host]
+channels = 1
+rates = [48000]
+terminal_type = 0x0201
+terminal_name = "Mic"
+volume = { min = 0, max = 100, res = 3 }
+
+[[functions]]
+kind = "ncm"
+id = "net"
+dev_addr = "02:00:00:00:00:01"
+qmult = 10
+ifname = "kit%d"
+max_segment_size = 1514
+
+[[functions]]
+kind = "rndis"
+
+[[functions]]
+kind = "hid"
+id = "keys"
+subclass = 1
+protocol = 1
+report_length = 8
+report_desc = "05010906a101 c0"
+has_out_endpoint = false
+bInterval = 4
