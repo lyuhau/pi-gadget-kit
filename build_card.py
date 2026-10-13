@@ -295,6 +295,21 @@ def manifest_of(target, expected):
     return "\n".join(lines) + "\n"
 
 
+def validate(cfg, path):
+    """Catch an unfilled template before doing any work."""
+    missing = [f"[{sec}] {key}" for sec, key in (("alpine", "version"), ("alpine", "sha256"),
+                                                ("system", "hostname"), ("access", "ssh_public_key"))
+               if not cfg.get(sec, {}).get(key)]
+    if missing:
+        sys.exit(f"{path}: fill in {', '.join(missing)} (see image/template.toml)")
+    key = os.path.expanduser(cfg["access"]["ssh_public_key"])
+    if not os.path.exists(key):
+        sys.exit(f"{path}: [access] ssh_public_key {key} doesn't exist")
+    wifi = rel(cfg["access"]["wifi"])
+    if not os.path.exists(wifi):
+        sys.exit(f"{path}: [access] wifi file {wifi} doesn't exist")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("config")
@@ -304,6 +319,7 @@ def main():
 
     with open(a.config, "rb") as f:
         cfg = tomllib.load(f)
+    validate(cfg, a.config)
     host = cfg["system"]["hostname"]
     card = os.path.join(OUT, f"card-{host}")
     shutil.rmtree(card, ignore_errors=True)

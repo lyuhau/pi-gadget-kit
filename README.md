@@ -11,7 +11,7 @@ string table, and audio works both ways at full speed.
 | `capture_usb.py` | Mac: capture, show, compare and refresh device captures |
 | `gadget_plan.py` | Mac: capture → gadget plan (the exact configfs writes) |
 | `gadget.sh` | Pi: apply a plan (`up` / `down` / `list`) |
-| `image/usbpi.toml` | Everything that goes on the Pi's card |
+| `image/template.toml` | Template image config: everything that goes on the Pi's card |
 | `image/overlay/` | Static files for the card's Alpine overlay |
 | `build_card.py` | Mac: build the card from the image config |
 | `gadgets/*.plan` | Generated plans (committed, so changes show in diffs) |
@@ -37,17 +37,19 @@ an empty macOS version, which crashes pip.
 ## 2. Build the card (Mac, needs Docker, e.g. Colima)
 
 ```bash
+cp image/template.toml image/usbpi.toml                 # once, then fill it in (gitignored)
 alpine-module/build.sh                                  # patched modules -> out/modules/
-.venv/bin/python build_card.py image/usbpi.toml         # -> out/card-usbpi/ + manifest
+.venv/bin/python build_card.py image/usbpi.toml         # -> out/card-<hostname>/ + manifest
 .venv/bin/python build_card.py image/usbpi.toml --install /Volumes/ALPINE
 ```
 
-Edit `image/usbpi.toml` to change what's on the card: Alpine release,
+Your image config (`image/*.toml` other than the template) stays out of git.
+It sets what's on the card: Alpine release,
 packages, services, boot modules, debug console, gadgets and their plan
 options, and which gadget starts at boot. Secrets stay outside the repo:
 `wifi.local` holds `SSID`, `PASSWORD` and `COUNTRY` (the Zero 2 W only does
 2.4 GHz), and your SSH public key is read from `~/.ssh`. Builds are
-reproducible: the same inputs give the same `out/card-usbpi.manifest`.
+reproducible: the same inputs give the same `out/card-<hostname>.manifest`.
 
 To reach the card without a card reader: power the Pi with no card (it waits
 in USB boot mode), insert the card, then run

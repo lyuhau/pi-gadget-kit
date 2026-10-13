@@ -6,3 +6,5 @@ __pycache__/
 wifi.local
 buildroot/local/
 out/
+image/*.toml
+!image/template.toml

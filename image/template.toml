@@ -1,0 +1,59 @@
+# Template for an image config: everything that ends up on the Pi's SD card.
+# Copy it to image/<name>.toml (gitignored), fill in the empty values, then:
+#   build_card.py image/<name>.toml [--install /Volumes/ALPINE]
+# Secrets stay in the files referenced under [access].
+
+[alpine]
+# The alpine-rpi release, from
+# https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/<arch>/latest-releases.yaml
+# (flavor alpine-rpi: its version and sha256). The patched kernel modules must
+# be built for this release's kernel (see alpine-module/inside.sh).
+version = ""
+arch = "aarch64"
+sha256 = ""
+
+[system]
+hostname = ""
+# Installed at every boot (Alpine runs diskless from RAM): from the card's
+# bundled apks/, and for anything Alpine doesn't bundle, from the card's cache/
+# that build_card.py fills (recorded in image/packages.lock).
+# The first six give Wi-Fi, SSH and time; add your own (e.g. "python3", "alsa-utils").
+packages = ["alpine-base", "openssh", "wpa_supplicant", "ifupdown-ng", "chrony", "iw"]
+# For "apk add" on the running Pi, and where cached packages come from; match
+# the release branch, e.g. "https://dl-cdn.alpinelinux.org/alpine/v3.24/main"
+# and ".../community". Needed if packages lists anything Alpine doesn't bundle.
+repositories = []
+# Loaded by the "modules" service. libcomposite is loaded later, from
+# [kernel_modules]: loading the stock one here would block the patched one.
+boot_modules = ["af_packet", "ipv6", "brcmfmac", "dwc2"]
+# usercfg.txt on the boot partition; dwc2 in peripheral mode makes the Pi a USB device
+boot_config = ["dtoverlay=dwc2,dr_mode=peripheral"]
+
+[services]
+# "local" runs /etc/local.d/*.start: patched modules, debug console, boot gadget.
+boot = ["local"]
+# wpa_supplicant/networking in "default": by then the boot runlevel has loaded
+# the Wi-Fi driver and wlan0 exists.
+default = ["wpa_supplicant", "networking", "sshd", "chronyd"]
+
+[access]
+wifi = "wifi.local"      # file with SSID, PASSWORD, COUNTRY lines (gitignored)
+ssh_public_key = ""      # e.g. "~/.ssh/id_ed25519.pub": root login, key only
+debug_console = true     # USB serial root shell until a gadget takes the port
+
+[kernel_modules]
+# Patched gadget modules (alpine-module/build.sh output), loaded at boot in
+# this order before anything can pull in the stock ones. Remove this section
+# to use Alpine's stock modules (gadget plans are then made for those).
+dir = "out/modules"
+load = ["libcomposite", "u_audio", "u_serial", "usb_f_acm", "usb_f_uac1", "usb_f_hid"]
+
+# Gadgets: a capture_usb.py capture plus gadget_plan.py options. build_card.py
+# writes each plan to gadgets/<name>.plan and onto the card.
+# [gadgets.mydevice]
+# capture = "mydevice.json"
+# max_speed = ""     # "" = as captured, or "full-speed" / "high-speed"
+# test_ids = false   # true: VID:PID 1209:0001 instead of the captured IDs
+
+[boot]
+gadget = ""        # a [gadgets] name to start at boot; "" = debug console only
