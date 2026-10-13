@@ -1,0 +1,63 @@
+#!/bin/busybox sh
+# PID 1 of the initramfs image ([image] type = "initramfs"). Everything is
+# already in RAM, so this only starts things: in the diskless image's order,
+# except that the watchdog comes first and Wi-Fi doesn't wait for the card.
+# Log: /var/log/boot.log.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mount -t devtmpfs dev /dev
+# From here on a hang anywhere reboots the Pi (bcm2835_wdt, built in).
+watchdog -T 15 -t 5 /dev/watchdog
+mkdir -p /dev/pts /dev/shm
+mount -t devpts devpts /dev/pts
+mount -t tmpfs -o nosuid,nodev,mode=1777 shm /dev/shm
+exec >/var/log/boot.log 2>&1
+set -x
+
+hostname -F /etc/hostname
+ip link set lo up
+syslogd
+
+# busybox reboot/halt/poweroff signal PID 1
+stop() {
+	kill -TERM -1; sleep 1; sync
+	umount /media/mmcblk0p1
+	"$1" -f
+}
+trap 'stop reboot' TERM
+trap 'stop halt' USR1
+trap 'stop poweroff' USR2
+
+# Boot modules (/etc/modules: Wi-Fi driver, dwc2), then what OpenRC's "local"
+# service runs: /etc/local.d (patched gadget modules, debug console, device).
+for m in $(cat /etc/modules); do modprobe "$m"; done
+for i in $(seq 1 20); do [ -n "$(ls /sys/class/udc)" ] && break; sleep 0.1; done
+mount -t configfs none /sys/kernel/config
+for s in /etc/local.d/*.start; do [ -x "$s" ] && "$s"; done
+
+# Wi-Fi, then the clock (no RTC: it starts at 1970). In the background:
+# wlan0 appears once the driver has loaded its firmware.
+(
+	for i in $(seq 1 50); do [ -e /sys/class/net/wlan0 ] && break; sleep 0.2; done
+	wpa_supplicant -B -s -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf
+	udhcpc -b -S -i wlan0 -x hostname:"$(hostname)"
+	if command -v chronyd; then chronyd; else ntpd -p pool.ntp.org; fi
+) >/var/log/wifi.log 2>&1 &
+
+[ -x /usr/sbin/sshd ] && /usr/sbin/sshd
+
+# The card, where diskless Alpine has it: read-only, for its files. The Pi
+# never unmounts it (power just goes), so check it first; -a repairs.
+for i in $(seq 1 25); do [ -b /dev/mmcblk0p1 ] && break; sleep 0.2; done
+mkdir -p /media/mmcblk0p1
+fsck.fat -a /dev/mmcblk0p1 >/var/log/fsck.log 2>&1
+mount -t vfat -o ro /dev/mmcblk0p1 /media/mmcblk0p1
+
+set +x
+echo "boot done"
+# reap orphans; the traps above run here
+while :; do
+	sleep 3600 &
+	wait
+done

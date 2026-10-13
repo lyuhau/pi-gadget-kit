@@ -18,6 +18,8 @@ Steps:
   5. the apkovl overlay: image/overlay/ plus files generated from the config
      and the secrets under [access]
   6. a manifest of every file's sha256 (out/card-<hostname>.manifest)
+Steps 1, 4 and 5 are for [image] type = "diskless" (the default); the
+"initramfs" type builds one initramfs instead (image_initramfs.py).
 
 Everything goes to out/card-<hostname>/ first, so builds can be compared;
 --install then replaces the card's contents with it and verifies the copy.
@@ -47,6 +49,7 @@ CONFIG_DIR = REPO  # set from the config file's location in main()
 
 # What an image config may set; anything else is rejected as a likely mistake.
 CONFIG_KEYS = {
+    "image": {"type"},
     "alpine": {"version", "arch", "sha256"},
     "system": {"hostname", "packages", "repositories"},
     "access": {"wifi", "ssh_public_key", "debug_console"},
@@ -134,24 +137,31 @@ def extract(tarball, dest):
         t.extractall(dest)
 
 
-def kernel_release(card):
-    cfgs = [f for f in os.listdir(os.path.join(card, "boot")) if f.startswith("config-")]
+def kernel_release(release):
+    cfgs = [f for f in os.listdir(os.path.join(release, "boot")) if f.startswith("config-")]
     return cfgs[0][len("config-"):] if cfgs else None
 
 
-def copy_kmods(card):
-    release = kernel_release(card)
-    dest = os.path.join(card, "kmods")
-    os.makedirs(dest)
+def read_kmods(release):
+    """The patched modules, name -> bytes, checked against the kernel."""
+    kmods = {}
     for m in KMODS:
         src = os.path.join(KMODS_DIR, m + ".ko")
         if not os.path.exists(src):
             sys.exit(f"{src} missing: run alpine-module/build.sh")
-        data = open(src, "rb").read()
-        if f"vermagic={release} ".encode() not in data:
+        kmods[m] = open(src, "rb").read()
+        if f"vermagic={release} ".encode() not in kmods[m]:
             sys.exit(f"{m}.ko wasn't built for this release's kernel {release}: rebuild with alpine-module/build.sh")
-        shutil.copyfile(src, os.path.join(dest, m + ".ko"))
     print(f"{len(KMODS)} modules for kernel {release}")
+    return kmods
+
+
+def copy_kmods(card, kmods):
+    dest = os.path.join(card, "kmods")
+    os.makedirs(dest)
+    for m, data in kmods.items():
+        with open(os.path.join(dest, m + ".ko"), "wb") as f:
+            f.write(data)
 
 
 def make_plan(cfg):
@@ -219,7 +229,9 @@ def fetch_packages(cfg, card, refetch):
     return True
 
 
-def overlay(cfg, plan, cached):
+def config_files(cfg, plan):
+    """Files for the Pi in both image types: image/overlay/ plus files made
+    from the config. path -> (mode, bytes)"""
     s, acc = cfg["system"], cfg["access"]
     wifi = read_wifi(rel(acc["wifi"]))
     pubkey = open(os.path.expanduser(acc["ssh_public_key"])).read().strip()
@@ -237,10 +249,6 @@ def overlay(cfg, plan, cached):
     gen = {
         "etc/hostname": f"{host}\n",
         "etc/hosts": f"127.0.0.1\tlocalhost {host}\n::1\t\tlocalhost {host}\n",
-        "etc/apk/world": "\n".join(s["packages"]) + "\n",
-        "etc/apk/repositories": "\n".join(["/media/mmcblk0p1/apks"] + s["repositories"]) + "\n",
-        # makes Alpine's init add its standard boot services next to ours
-        "etc/.default_boot_services": "",
         "etc/modules": "\n".join(BOOT_MODULES) + "\n",
     }
     for p, text in gen.items():
@@ -260,6 +268,20 @@ def overlay(cfg, plan, cached):
         files["etc/usb-gadget/device.plan"] = (0o644, plan.encode())
         if cfg["device"].get("start_at_boot", False):
             files["etc/usb-gadget/start-at-boot"] = (0o644, b"")
+    return files
+
+
+def overlay(cfg, plan, cached):
+    s, host = cfg["system"], cfg["system"]["hostname"]
+    files = config_files(cfg, plan)
+    gen = {
+        "etc/apk/world": "\n".join(s["packages"]) + "\n",
+        "etc/apk/repositories": "\n".join(["/media/mmcblk0p1/apks"] + s["repositories"]) + "\n",
+        # makes Alpine's init add its standard boot services next to ours
+        "etc/.default_boot_services": "",
+    }
+    for p, text in gen.items():
+        files[p] = (0o644, text.encode())
 
     links = {f"etc/runlevels/{level}/{svc}": f"/etc/init.d/{svc}"
              for level, svcs in SERVICES.items() for svc in svcs}
@@ -358,6 +380,8 @@ def validate(cfg, path):
             sys.exit(f"{path}: [device] needs description = \"<file>.json\"")
         if not os.path.exists(rel(dev["description"])):
             sys.exit(f"{path}: [device] description {rel(dev['description'])} doesn't exist")
+    if cfg.get("image", {}).get("type", "diskless") not in ("diskless", "initramfs"):
+        sys.exit(f"{path}: [image] type is \"diskless\" or \"initramfs\"")
 
 
 def main():
@@ -379,22 +403,30 @@ def main():
     os.makedirs(card)
 
     step("Alpine release")
-    extract(alpine_tarball(cfg, a.refetch), card)
-    print(f"alpine-rpi {cfg['alpine']['version']} {cfg['alpine']['arch']}, kernel {kernel_release(card)}")
-    step("kernel modules")
-    copy_kmods(card)
-    step("device plan")
-    plan = make_plan(cfg)
-    step("packages")
-    cached = fetch_packages(cfg, card, a.refetch)
-    step("overlay")
-    name, data, n = overlay(cfg, plan, cached)
-    with open(os.path.join(card, name), "wb") as f:
-        f.write(data)
-    with open(os.path.join(card, "usercfg.txt"), "w") as f:
-        f.write("\n".join(BOOT_CONFIG) + "\n")
-    at_boot = "device" if plan and cfg["device"].get("start_at_boot") else "debug console"
-    print(f"{name}: {n} files; at boot: {at_boot}")
+    tarball = alpine_tarball(cfg, a.refetch)
+    if cfg.get("image", {}).get("type") == "initramfs":
+        import image_initramfs
+        step("device plan")
+        plan = make_plan(cfg)
+        image_initramfs.build(cfg, tarball, card, config_files(cfg, plan), a.refetch,
+                              os.path.join(CONFIG_DIR, "packages.lock"))
+    else:
+        extract(tarball, card)
+        print(f"alpine-rpi {cfg['alpine']['version']} {cfg['alpine']['arch']}, kernel {kernel_release(card)}")
+        step("kernel modules")
+        copy_kmods(card, read_kmods(kernel_release(card)))
+        step("device plan")
+        plan = make_plan(cfg)
+        step("packages")
+        cached = fetch_packages(cfg, card, a.refetch)
+        step("overlay")
+        name, data, n = overlay(cfg, plan, cached)
+        with open(os.path.join(card, name), "wb") as f:
+            f.write(data)
+        with open(os.path.join(card, "usercfg.txt"), "w") as f:
+            f.write("\n".join(BOOT_CONFIG) + "\n")
+        print(f"{name}: {n} files")
+    print("at boot: " + ("device" if plan and cfg["device"].get("start_at_boot") else "debug console"))
 
     step("manifest")
     text = manifest(card)
