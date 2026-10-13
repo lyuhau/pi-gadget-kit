@@ -1,0 +1,13 @@
+# heartbeat's USB device: UAC2 audio both ways (stock settings).
+[device]
+idVendor = 0x1209   # pid.codes test IDs
+idProduct = 0x0001
+[strings]
+manufacturer = "usb example"
+product = "heartbeat"
+
+[[functions]]
+kind = "uac2"
+id = "audio"
+[functions.host_to_device]
+[functions.device_to_host]

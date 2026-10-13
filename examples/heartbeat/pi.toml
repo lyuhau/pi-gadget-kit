@@ -1,0 +1,37 @@
+# heartbeat, the smallest app (README: Apps), dev config:
+#   build_card.py examples/heartbeat/pi.toml [--install /Volumes/ALPINE]
+# pi-release.toml is the same without the ways in.
+
+[image]
+type = "initramfs"
+
+[alpine]
+version = "3.24.2"
+arch = "aarch64"
+sha256 = "60e6b9f49ec3d2c9660f2ef775f5af3a98cfd2f939c8f55b6f215d00e5ffcb87"
+
+[system]
+hostname = "heartbeat"
+packages = ["alpine-base", "openssh", "chrony"]
+repositories = [
+  "https://dl-cdn.alpinelinux.org/alpine/v3.24/main",
+  "https://dl-cdn.alpinelinux.org/alpine/v3.24/community",
+]
+
+[access]
+wifi = ""                                 # or "wifi.local" (SSID, PASSWORD, COUNTRY lines)
+ssh_public_key = "~/.ssh/id_ed25519.pub"
+debug_console = true
+
+[device]
+description = "device.toml"
+start_at_boot = true
+console = true         # dev: the debug console stays on USB next to the audio
+
+[app]
+name = "heartbeat"
+files = { "opt/heartbeat/run.sh" = "app/run.sh" }
+run = "/opt/heartbeat/run.sh"
+state = true                                  # /var/lib/heartbeat is the card's heartbeat/
+keep_logs = true                              # /var/log on the card: logs/last, logs/prev
+config_txt = ["dtparam=act_led_trigger=none"] # the LED stays dark until the app blinks it
