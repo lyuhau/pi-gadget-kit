@@ -124,7 +124,7 @@ apply() {
 
 case "$1" in
 load) load "$2" ;;
-boot) { load; apply; } >> "$LOG" 2>&1 ;;
+boot) mkdir -p "$(dirname "$LOG")"; { load; apply; } >> "$LOG" 2>&1 ;;
 *) echo "usage: settings.sh load [FILE] | boot" >&2; exit 2 ;;
 esac
 exit 0

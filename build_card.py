@@ -748,7 +748,7 @@ def main():
         f.write(settings_text(cfg, plan))
     dev = cfg.get("device") or {}
     console = cfg["access"].get("debug_console", True)
-    print("at boot: " + ("device" + (" with the debug console" if dev.get("console") else "")
+    print("at boot: " + ("device" + (" with the debug console" if dev.get("console") and console else "")
                          if plan and dev.get("start_at_boot") else "debug console" if console else "nothing on USB"))
 
     step("manifest")
