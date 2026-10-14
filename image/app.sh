@@ -7,11 +7,14 @@
 #   app.sh save-logs   copy /var/log to the card's logs/last now
 #   app.sh stop        save the logs, release the state folder (at shutdown)
 #
-# [app] run gets app.env's variables in its environment, and its output in
+# [app] run gets app.env's variables and the card's settings (APP_SETTING_*,
+# README: Card settings) in its environment, and its output in
 # $APP_LOG. It's started once, in the background, in its own session: keeping
 # it running (restarting it) is the app's job.
 set -a
 . /etc/usb-gadget/app.env
+[ -f /etc/usb-gadget/settings.defaults ] && . /etc/usb-gadget/settings.defaults
+[ -f /run/usb-gadget/settings.env ] && . /run/usb-gadget/settings.env
 set +a
 
 # The card, writable. initramfs: init mounted it rw already; diskless: Alpine

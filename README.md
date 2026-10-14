@@ -120,13 +120,65 @@ per kind from 0 as captures are (`hid.0`). The card lists them in
    `diskutil list external`:
    `diskutil eraseDisk FAT32 ALPINE MBRFormat /dev/diskN`.
 4. Install, which replaces the card's contents (except an [app](#apps)'s
-   state folder and logs) and verifies every file:
+   state folder and logs, and the [card's settings](#card-settings)) and
+   verifies every file:
    `.venv/bin/python build_card.py config/pi.toml --install /Volumes/ALPINE`,
    then `diskutil eject /Volumes/ALPINE`.
 5. Replug the Pi with the card in. It boots (30–40 s diskless, see below):
    - installs its packages from the card (diskless only; offline);
+   - reads the card's `settings.txt`;
    - joins Wi-Fi;
    - either presents the device (`start_at_boot`) or opens the debug console.
+
+## Card settings
+
+Some settings can change without a rebuild: `settings.txt` at the top of the
+card, a text file to edit on any computer. The build writes every setting
+there, commented out, with its built-in value:
+
+```
+# The Pi's name on the network: letters, digits and -.
+#hostname = usb-gadget
+```
+
+One `key = value` per line; to change one, remove its `#` and edit the value.
+`#` only starts a comment at the beginning of a line (`relay = host:443#pin`
+is one value), surrounding `"` are dropped, and Windows line ends are fine.
+A key that's left out or empty keeps the built-in value. So does a misspelt
+key or a value that isn't valid: a typo never keeps the Pi from booting or
+presenting its device. The Pi says why in `/var/log/settings.log`.
+
+| Key | Value | Built-in value |
+|---|---|---|
+| `hostname` | letters, digits, `-` | `[system] hostname` |
+| `console` | `on` or `off`: the debug console | `[access] debug_console` |
+| `usb.vendor_id`, `usb.product_id` | hex, e.g. `0x1d6b` | the description's (with `[device]`) |
+| `usb.manufacturer`, `usb.product`, `usb.serial` | text, at most 126 bytes | the description's |
+| `APP.KEY` | text; the app checks it | `[app] settings` (see [Apps](#apps)) |
+
+- **console:** `on` gives the debug console when no device is up, and in
+  the device when it has room for it (`[device] console`); `off` leaves it
+  out of both. So an image built with `debug_console = false` can still
+  turn it on: anyone who has the card can change the image anyway.
+- **usb.\***: written over the plan's values when the device comes up
+  (`gadget.sh up`; `gadget.sh plan` prints the result). A value the kernel
+  refuses leaves the plan's.
+- **SSH keys:** a file `ssh_authorized_keys` next to `settings.txt`, as
+  `~/.ssh/authorized_keys`, adds keys for root. Only if the image has an SSH
+  server (initramfs: `[access] ssh_public_key` set; diskless: `openssh` in
+  the packages); without one, the Pi logs that and ignores the file.
+
+`--install` keeps the card's `settings.txt` and `ssh_authorized_keys`: they
+belong to whoever edited them. Settings the kept file doesn't mention yet
+(a new image's) are added at its end, commented out; nothing else in it
+changes. Delete the file before installing for a fresh one.
+
+On the Pi, `/etc/local.d/05-settings.start` reads the file
+(`image/settings.sh`) once the card is mounted, before the debug console and
+the device. Readers source `/etc/usb-gadget/settings.defaults` (the build's
+values), then `/run/usb-gadget/settings.env` (the card's valid ones):
+`SETTING_HOSTNAME`, `SETTING_CONSOLE`, `SETTING_USB_VENDOR_ID`...,
+`APP_SETTING_KEY`.
 
 ## Image types
 
@@ -141,7 +193,7 @@ from RAM with the same kernel, packages, patched modules and config files.
 - **`initramfs`**: `image_initramfs.py` unpacks the packages on the Mac into
   one initramfs (`boot/initrd.img`, about 30 MB). The Pi's firmware loads it
   with the kernel, and `image/init` only starts things: watchdog, modules,
-  the same `/etc/local.d` scripts, the card, the app, Wi-Fi, SSH, time. There is no OpenRC or
+  the card, the same `/etc/local.d` scripts, the app, Wi-Fi, SSH, time. There is no OpenRC or
   apk (`alpine-base` is left out), so packages and changes only come with a
   rebuild. Needs no Docker for packages, and keeps one ssh
   host key per hostname in `out/`, so reinstalls keep the Pi's identity.
@@ -169,7 +221,8 @@ ssh root@<address> sh /etc/usb-gadget/gadget.sh set audio c_srate=44100   # see 
 
 The device takes the USB port from the debug console. With `[device]
 console = true` it includes the console instead (as `acm.console`, an extra
-serial interface), so `pi_console.py` keeps working while the device is up.
+serial interface), so `pi_console.py` keeps working while the device is up;
+unless the card's `console = off` leaves it out.
 
 **Audio:** your code on the Pi uses ALSA `hw:0,0`. Host playback arrives as
 capture, and the device's microphone is playback. Reads fail until the host
@@ -189,7 +242,8 @@ Changes made on the Pi are lost at reboot unless saved with `lbu commit`
 (diskless only). Put lasting ones in the config.
 
 **Security:** the debug console is a root shell with no password for anything
-plugged into the Pi's USB port (set `debug_console = false` to drop it), and
+plugged into the Pi's USB port (`debug_console = false`, or the card's
+`console = off`, drops it), and
 the Wi-Fi password is stored in plain text on the card (as is the initramfs
 image's ssh host key).
 
@@ -211,6 +265,7 @@ state = true                        # /var/lib/myapp is the card's myapp/
 keep_logs = true                    # /var/log on the card: logs/last, logs/prev
 config_txt = ["gpio=21=ip,pu"]      # extra config.txt lines
 kmods = ["snd_aloop"]               # stock modules to ship and load before run
+settings = { mode = "fast" }        # card settings: key = default, or { default, help }
 ```
 
 - **Files:** sources are relative to the config; executable ones stay
@@ -231,6 +286,13 @@ kmods = ["snd_aloop"]               # stock modules to ship and load before run
 - **keep_logs:** at start, the card's `logs/last` becomes `logs/prev`; every
   10 minutes from a minute in, and at shutdown, `/var/log/*` is copied to
   `logs/last`.
+- **settings:** on the card's `settings.txt` as `NAME.KEY` (`myapp.mode`),
+  commented out with the default and the help (`mode = { default = "fast",
+  help = "fast or slow." }`), for users to change without a rebuild (see
+  [Card settings](#card-settings)). `run` gets them as `APP_SETTING_KEY`
+  (`APP_SETTING_MODE`): the default, or the card's value, which can be any
+  one line of text. Checking it is the app's job, and a bad value should
+  fall back, not stop the app.
 
 `/etc/usb-gadget/app.env` (shell syntax; exported to `run`) says where
 things are:
@@ -303,12 +365,13 @@ the build works only from the copy in `out/cache/`.
 | `image/template.toml` | Template for `config/pi.toml` |
 | `image/overlay/` | Files placed on the Pi as-is (startup scripts, network) |
 | `image/app.sh` | On the Pi: starts an `[app]` (state folder, logs, `run`) |
+| `image/settings.sh` | On the Pi: reads the card's `settings.txt` |
 | `examples/heartbeat/` | The smallest app: dev and release configs, a `run` script |
 | `build_card.py` | Builds and installs the card; owns the fixed plumbing (boot modules, services) |
 | `image_initramfs.py`, `image/init` | The initramfs image type: its build, and its PID 1 on the Pi |
 | `gadget_plan.py` | Device description → plan of configfs operations (run by `build_card.py`) |
 | `gadget.sh` | On the Pi: apply the plan (`up` / `down` / `list` / `set`) |
-| `tests/` | Golden plans for `gadget_plan.py`, `[app]` builds: `.venv/bin/python -m unittest discover tests` |
+| `tests/` | Golden plans for `gadget_plan.py`, `[app]` builds, card settings: `.venv/bin/python -m unittest discover tests` |
 | `alpine-module/` | Patched gadget modules (`patches/`, built in Docker for `kernel.env`'s kernel); `pi_kmods.sh` loads them on the Pi |
 | `pi_console.py` | Runs commands over the Pi's USB debug console |
 | `out/` | Build output: modules, `device.plan`, card contents, manifests |

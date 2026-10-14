@@ -2,8 +2,8 @@
 # PID 1 of the initramfs image ([image] type = "initramfs"). Everything is
 # already in RAM, so this only starts things: in the diskless image's order,
 # except that the watchdog comes first. Log: /var/log/boot.log.
-# Order: modules, the device (/etc/local.d), the card, the app ([app]),
-# Wi-Fi and the clock, sshd.
+# Order: modules, the card, its settings and the device (/etc/local.d), the
+# app ([app]), Wi-Fi and the clock, sshd.
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 mount -t proc proc /proc
 mount -t sysfs sys /sys
@@ -38,16 +38,17 @@ trap 'stop halt' USR1
 trap 'stop poweroff' USR2
 
 (
-# Boot modules (/etc/modules: Wi-Fi driver, dwc2), then what OpenRC's "local"
-# service runs: /etc/local.d (patched gadget modules, debug console, device).
+# Boot modules (/etc/modules: Wi-Fi driver, dwc2), the card, then what
+# OpenRC's "local" service runs: /etc/local.d (patched gadget modules, the
+# card's settings, debug console, device).
 for m in $(cat /etc/modules); do modprobe "$m"; done
 for i in $(seq 1 20); do [ -n "$(ls /sys/class/udc)" ] && break; sleep 0.1; done
 mount -t configfs none /sys/kernel/config
-for s in /etc/local.d/*.start; do [ -x "$s" ] && "$s"; done
 
-# The card, where diskless Alpine has it: read-only, for its files, unless
-# the app keeps state or logs there. The Pi never unmounts it (power just
-# goes), so check it first; -a repairs.
+# The card, where diskless Alpine has it, and before the device: its
+# settings.txt (/etc/local.d/05-settings.start) can change the device.
+# Read-only, for its files, unless the app keeps state or logs there. The Pi
+# never unmounts it (power just goes), so check it first; -a repairs.
 APP_OWNS= STATE_ON_CARD= KEEP_LOGS=
 [ -f /etc/usb-gadget/app.env ] && . /etc/usb-gadget/app.env
 opts=ro
@@ -56,6 +57,8 @@ for i in $(seq 1 25); do [ -b /dev/mmcblk0p1 ] && break; sleep 0.2; done
 mkdir -p /media/mmcblk0p1
 fsck.fat -a /dev/mmcblk0p1 >/var/log/fsck.log 2>&1
 mount -t vfat -o $opts /dev/mmcblk0p1 /media/mmcblk0p1
+
+for s in /etc/local.d/*.start; do [ -x "$s" ] && "$s"; done
 
 # The app: right after the device, before Wi-Fi.
 [ -f /etc/usb-gadget/app.sh ] && sh /etc/usb-gadget/app.sh start

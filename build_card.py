@@ -61,7 +61,7 @@ CONFIG_KEYS = {
     "system": {"hostname", "packages", "repositories"},
     "access": {"wifi", "ssh_public_key", "debug_console"},
     "device": {"description", "max_speed", "test_ids", "start_at_boot", "console"},
-    "app": {"name", "files", "overlay", "run", "owns", "state", "keep_logs", "config_txt", "kmods"},
+    "app": {"name", "files", "overlay", "run", "owns", "state", "keep_logs", "config_txt", "kmods", "settings"},
 }
 # What an app can take over from the platform ([app] owns).
 OWNABLE = {"wifi", "time"}
@@ -69,6 +69,10 @@ CARD = "/media/mmcblk0p1"  # the card's FAT partition on the Pi, in both image t
 GADGET = "/sys/kernel/config/usb_gadget/device"
 # Top-level folders of a card (both image types, and keep_logs'): not an app's name.
 CARD_NAMES = {"logs", "boot", "overlays", "apks", "cache", "kmods"}
+# The card's settings (README: Card settings), and the SSH keys file next to
+# it: its users' files, which --install keeps.
+SETTINGS = "settings.txt"
+USER_FILES = (SETTINGS, "ssh_authorized_keys")
 
 # Fixed plumbing rather than config: changing these mostly breaks Wi-Fi, SSH
 # or USB device mode.
@@ -338,6 +342,105 @@ def app_env(cfg):
             + "".join(f"{k}={shlex.quote(v) if v else ''}\n" for k, v in env))
 
 
+# ---------------------------------------------------------------- card settings
+
+def has_sshd(cfg):
+    if cfg.get("image", {}).get("type") == "initramfs":
+        return bool(cfg["access"].get("ssh_public_key"))
+    return "openssh" in cfg["system"]["packages"] or "openssh-server" in cfg["system"]["packages"]
+
+
+def settings(cfg, plan):
+    """The card's settings: blocks of (help, [(key, type, variable, default,
+    shown)]), for settings.txt and the Pi's settings.keys/.defaults. `shown`
+    is the default settings.txt shows; usb.* default to "" (the plan's)."""
+    dev = cfg.get("device") or {}
+    console = "on" if cfg["access"].get("debug_console", True) else "off"
+    blocks = [
+        ("The Pi's name on the network: letters, digits and -.",
+         [("hostname", "hostname", "SETTING_HOSTNAME", cfg["system"]["hostname"], cfg["system"]["hostname"])]),
+        ("The debug console, on or off: a root shell over USB, with no password, while no\n"
+         "device is up" + (", and in the device (a serial port next to its other interfaces)."
+                           if dev.get("console") else "."),
+         [("console", "onoff", "SETTING_CONSOLE", console, console)]),
+    ]
+    if plan:
+        writes = dict(line.split(" ", 2)[1:] for line in plan[0].splitlines()
+                      if line.startswith("write ") and line.count(" ") >= 2)
+        usb = [("vendor_id", "hex16", "idVendor"), ("product_id", "hex16", "idProduct"),
+               ("manufacturer", "usbstring", f"strings/{gadget_plan.LANG}/manufacturer"),
+               ("product", "usbstring", f"strings/{gadget_plan.LANG}/product"),
+               ("serial", "usbstring", f"strings/{gadget_plan.LANG}/serialnumber")]
+        blocks.append(("The USB device as the computer sees it: vendor and product ID (hex), and the\n"
+                       "manufacturer, product and serial number (at most 126 characters each).",
+                       [(f"usb.{k}", t, f"SETTING_USB_{k.upper()}", "", writes.get(attr, "")) for k, t, attr in usb]))
+    app = cfg.get("app") or {}
+    for k, v in (app.get("settings") or {}).items():
+        default, text = (v, "") if isinstance(v, str) else (v.get("default", ""), v.get("help", ""))
+        blocks.append((text, [(f"{app['name']}.{k}", "text", f"APP_SETTING_{k.upper()}", default, default)]))
+    keys = [k for _, es in blocks for k, *_ in es]
+    if len(set(keys)) < len(keys):
+        sys.exit(f"[app] settings: {app['name']}.KEY is one of the platform's settings (README: Card settings)")
+    return blocks
+
+
+def settings_block(text, entries):
+    return ("".join(f"# {l}\n" for l in text.splitlines())
+            + "".join(f"#{k} = {shown}".rstrip() + "\n" for k, _, _, _, shown in entries))
+
+
+def settings_text(cfg, plan):
+    """settings.txt, as a new card gets it: every setting commented out, with its default."""
+    app = (cfg.get("app") or {}).get("name")
+    head = ("# This Pi's settings: edit them on any computer, then put the card back in\n"
+            "# the Pi.\n"
+            "#\n"
+            "# One \"key = value\" per line. Lines starting with # are comments, as are the\n"
+            "# settings below, which show the built-in values: to change one, remove its #\n"
+            "# and edit the value. A # later in a line is part of the value. A setting\n"
+            "# that's left out, empty, misspelt or not valid keeps the built-in value (the\n"
+            "# Pi logs why, in /var/log/settings.log).\n")
+    body, apps = [], False
+    for text, entries in settings(cfg, plan):
+        if entries[0][0].startswith(f"{app}.") and not apps:
+            body.append(f"# ---- {app}\n")
+            apps = True
+        body.append(settings_block(text, entries))
+    if has_sshd(cfg):
+        body.append("# SSH: public keys in a file named ssh_authorized_keys next to this one, one\n"
+                    "# per line as in ~/.ssh/authorized_keys, can log in as root.\n")
+    return head + "".join("\n" + b for b in body)
+
+
+def merge_settings(old, cfg, plan):
+    """A card's settings.txt, kept by --install: as it was, plus the settings
+    it doesn't mention yet, commented out. -> (text, new keys)"""
+    known = set(re.findall(r"^[ \t\ufeff]*#?[ \t]*([A-Za-z0-9_.-]+)[ \t]*=", old, re.M))
+    add, keys = [], []
+    for text, entries in settings(cfg, plan):
+        if not known & {k for k, *_ in entries}:
+            add.append(settings_block(text, entries))
+            keys += [k for k, *_ in entries]
+    if not add:
+        return old, []
+    return (old.rstrip("\n") + "\n\n# ---- new in this image (build_card.py --install)\n"
+            + "".join("\n" + b for b in add)), keys
+
+
+def settings_files(cfg, plan):
+    """The Pi's side: the parser and what it checks against."""
+    entries = [e for _, es in settings(cfg, plan) for e in es]
+    keys = "".join(f"{k} {t} {var}\n" for k, t, var, _, _ in entries)
+    defaults = "".join(f"{var}={shlex.quote(d) if d else ''}\n" for _, _, var, d, _ in entries)
+    return {
+        "etc/usb-gadget/settings.sh": (0o755, read(os.path.join(REPO, "image", "settings.sh"))),
+        "etc/usb-gadget/settings.keys": (0o644, ("# the card's settings (build_card.py): KEY TYPE VARIABLE\n"
+                                                 + keys).encode()),
+        "etc/usb-gadget/settings.defaults": (0o644, ("# the card's settings' built-in values (build_card.py)\n"
+                                                     + defaults).encode()),
+    }
+
+
 def config_files(cfg, plan):
     """Files for the Pi in both image types: image/overlay/ plus files made
     from the config. `plan` is make_plan's (plan, functions) or None.
@@ -351,8 +454,7 @@ def config_files(cfg, plan):
         for n in names:
             p = os.path.join(root, n)
             files[os.path.relpath(p, src)] = (0o755 if os.access(p, os.X_OK) else 0o644, read(p))
-    if not acc.get("debug_console", True):
-        files.pop("etc/local.d/10-usb-console.start", None)
+    files.update(settings_files(cfg, plan))
 
     gen = {
         "etc/hostname": f"{host}\n",
@@ -473,9 +575,11 @@ def kept_on_card(cfg):
     return ([app["name"]] if app.get("state") else []) + (["logs"] if app.get("keep_logs") else [])
 
 
-def install(card, target, expected, keep=()):
+def install(card, target, expected, keep=(), merge=None):
     """Replace the card's contents with the build, except the top-level
-    folders in `keep` (an app's state and logs), and verify the copy."""
+    folders in `keep` (an app's state and logs) and USER_FILES, and verify
+    the copy. A card's settings.txt stays as its users left it, plus what
+    merge(old text) -> (text, new keys) adds (merge_settings)."""
     clash = [k for k in keep if os.path.exists(os.path.join(card, k))]
     if clash:
         sys.exit(f"the build has {', '.join(clash)}, which --install keeps on the card")
@@ -486,8 +590,12 @@ def install(card, target, expected, keep=()):
     kept = sorted(k for k in keep if os.path.isdir(os.path.join(target, k)))
     if kept:
         print(f"keeping the app's {', '.join(k + '/' for k in kept)} on the card")
+    old = None
+    if os.path.isfile(os.path.join(target, SETTINGS)):
+        with open(os.path.join(target, SETTINGS), "rb") as f:
+            old = f.read()
     for name in os.listdir(target):
-        if name in (".Spotlight-V100", ".fseventsd", ".Trashes") or name in keep:
+        if name in (".Spotlight-V100", ".fseventsd", ".Trashes") or name in keep or name in USER_FILES:
             continue
         p = os.path.join(target, name)
         shutil.rmtree(p) if os.path.isdir(p) and not os.path.islink(p) else os.remove(p)
@@ -495,6 +603,13 @@ def install(card, target, expected, keep=()):
     subprocess.run(["cp", "-RX", card + "/.", target + "/"], check=True, env=env)
     subprocess.run(["find", target, "-name", "._*", "-delete"], check=False,
                    stderr=subprocess.DEVNULL)
+    if old is not None:  # the users' file, not the build's
+        text, new = merge(old.decode("utf-8", "replace")) if merge else (None, [])
+        with open(os.path.join(target, SETTINGS), "wb") as f:
+            f.write(text.encode() if new else old)
+        print(f"keeping the card's {SETTINGS}" + (f", with the new {', '.join(new)} added (commented out)"
+                                                  if new else ""))
+        expected = "".join(l + "\n" for l in expected.splitlines() if l[66:] != SETTINGS)
     subprocess.run(["sync"], check=True)
     step("verifying the copy")
     got = manifest_of(target, expected)
@@ -536,8 +651,6 @@ def validate(cfg, path):
             sys.exit(f"{path}: [device] needs description = \"<file>.json\" (or a hand-written .toml)")
         if not os.path.exists(rel(dev["description"])):
             sys.exit(f"{path}: [device] description {rel(dev['description'])} doesn't exist")
-        if dev.get("console") and not cfg["access"].get("debug_console", True):
-            sys.exit(f"{path}: [device] console needs [access] debug_console = true")
     if cfg.get("app") is not None:
         validate_app(cfg, path)
     if cfg.get("image", {}).get("type", "diskless") not in ("diskless", "initramfs"):
@@ -572,6 +685,17 @@ def validate_app(cfg, path):
     files = app.get("files", {})
     if not isinstance(files, dict):
         bad('files is a table: { "path/on/pi" = "source" }')
+    sets = app.get("settings", {})
+    if not isinstance(sets, dict):
+        bad('settings is a table: { key = "default" }')
+    for k, v in sets.items():
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", k):
+            bad(f"settings: {k!r}: lowercase letters, digits and \"_\"")
+        if isinstance(v, dict) and not set(v) <= {"default", "help"}:
+            bad(f"settings: {k} is \"default\" or {{ default = \"...\", help = \"...\" }}")
+        default, text = (v.get("default", ""), v.get("help", "")) if isinstance(v, dict) else (v, "")
+        if not isinstance(default, str) or "\n" in default or not isinstance(text, str):
+            bad(f"settings: {k}: a default (one line of text) and its help")
     for dest, src in files.items():
         d = os.path.normpath(dest.lstrip("/"))
         if d.startswith("..") or d == "." or not isinstance(src, str):
@@ -620,6 +744,8 @@ def main():
         with open(os.path.join(card, "usercfg.txt"), "w") as f:
             f.write("\n".join(config_txt(cfg)) + "\n")
         print(f"{name}: {n} files")
+    with open(os.path.join(card, SETTINGS), "w") as f:
+        f.write(settings_text(cfg, plan))
     dev = cfg.get("device") or {}
     console = cfg["access"].get("debug_console", True)
     print("at boot: " + ("device" + (" with the debug console" if dev.get("console") else "")
@@ -634,7 +760,7 @@ def main():
     print(f"{text.count(chr(10))} files, manifest sha256 {digest[:16]}  ({os.path.relpath(mpath, REPO)})")
 
     if a.install:
-        install(card, a.install, text, kept_on_card(cfg))
+        install(card, a.install, text, kept_on_card(cfg), lambda old: merge_settings(old, cfg, plan))
 
 
 if __name__ == "__main__":

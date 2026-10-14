@@ -9,9 +9,15 @@
 #   gadget.sh set FUNCTION ATTR=VALUE...
 #                          change attributes of the device that's up, e.g.
 #                          "set audio c_srate=96000 p_srate=96000" (see below)
+#   gadget.sh plan [PLAN]  print the plan as "up" applies it: with the card's settings
 # Defaults: the card's plan (/etc/usb-gadget/device.plan) and its gadget, "device".
 # A plan with a "console" operation ([device] console) gets the debug
 # console's shell on that function's serial port.
+#
+# The card's settings (settings.txt; image/settings.sh) go on top of the plan:
+# usb.* replace the IDs and strings (written after the plan's, as "write?": a
+# value the kernel refuses leaves the plan's), and console = off leaves the
+# console function (acm.console) out.
 #
 # set: a function's attributes can only change while it's in no configuration.
 # So: unbind (the host sees an unplug), unlink every function, write the
@@ -21,11 +27,15 @@
 # directory (uac2.audio). The device is relinked and rebound even when a write
 # is refused; then set names it and exits 1.
 set -e
-CFS=/sys/kernel/config/usb_gadget
-DISPLACED=/run/gadget.displaced
-RUNPLAN=/run/gadget.plan  # the plan of the device that's up, for "set"
-PLAN=/etc/usb-gadget/device.plan
-CONSOLE=/etc/usb-gadget/console.sh
+R=${USB_TEST_ROOT:-}  # tests: a fake root
+CFS=$R/sys/kernel/config/usb_gadget
+DISPLACED=$R/run/gadget.displaced
+RUNPLAN=$R/run/gadget.plan  # the plan of the device that's up (settings applied), for "set"
+PLAN=$R/etc/usb-gadget/device.plan
+CONSOLE=$R/etc/usb-gadget/console.sh
+SETTING_CONSOLE= SETTING_USB_VENDOR_ID= SETTING_USB_PRODUCT_ID= SETTING_USB_MANUFACTURER= SETTING_USB_PRODUCT= SETTING_USB_SERIAL=
+[ -f "$R/etc/usb-gadget/settings.defaults" ] && . "$R/etc/usb-gadget/settings.defaults"
+[ -f "$R/run/usb-gadget/settings.env" ] && . "$R/run/usb-gadget/settings.env"
 
 die() { echo "gadget.sh: $*" >&2; exit 1; }
 
@@ -42,6 +52,24 @@ net_up() {
 		ifname=$(cat "$f/ifname")
 		ip link set dev "$ifname" up || echo "note: couldn't bring $ifname up"
 	done
+}
+
+# PLAN with the card's settings applied, on stdout
+effective() {
+	S_CONSOLE=$SETTING_CONSOLE S_VID=$SETTING_USB_VENDOR_ID S_PID=$SETTING_USB_PRODUCT_ID \
+	S_MFR=$SETTING_USB_MANUFACTURER S_PRODUCT=$SETTING_USB_PRODUCT S_SERIAL=$SETTING_USB_SERIAL awk '
+	BEGIN {
+		n = split("idVendor S_VID idProduct S_PID strings/0x409/manufacturer S_MFR " \
+			"strings/0x409/product S_PRODUCT strings/0x409/serialnumber S_SERIAL", a, " ")
+		for (i = 1; i < n; i += 2) if (ENVIRON[a[i + 1]] != "") over[a[i]] = ENVIRON[a[i + 1]]
+	}
+	NR == FNR { if ($1 == "write") planned[$2] = 1; next }
+	ENVIRON["S_CONSOLE"] == "off" && $2 ~ /^functions\/acm\.console(\/|$)/ { next }
+	{ print }
+	$1 == "write" && ($2 in over) { print "write? " $2 " " over[$2] }
+	$1 == "mkdir" && $2 == "strings/0x409" {
+		for (k in over) if (k ~ /^strings/ && !(k in planned)) print "write? " k " " over[k]
+	}' "$1" "$1"
 }
 
 remove() {
@@ -67,10 +95,13 @@ remove() {
 up() {
 	plan=$1
 	[ -f "$plan" ] || die "no plan $plan"
+	mkdir -p "$(dirname "$RUNPLAN")"
+	effective "$plan" > "$RUNPLAN.new"
+	plan=$RUNPLAN.new
 	name=$(sed -n 's/^name //p' "$plan")
 	[ -n "$name" ] || die "$plan has no 'name' line"
 	modprobe libcomposite
-	mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
+	mountpoint -q "$R/sys/kernel/config" || mount -t configfs none /sys/kernel/config
 	remove "$name"
 	g="$CFS/$name"
 	mkdir "$g"
@@ -97,7 +128,7 @@ up() {
 		esac
 	done < "$plan"
 
-	udc=$(ls /sys/class/udc | head -n 1)
+	udc=$(ls "$R/sys/class/udc" | head -n 1)
 	[ -n "$udc" ] || die "no USB device controller (is dwc2 loaded in peripheral mode?)"
 	# One gadget per controller: unbind whichever holds it, remember it for "down".
 	for other in "$CFS"/*/UDC; do
@@ -110,7 +141,7 @@ up() {
 	echo "$udc" > "$g/UDC"
 	echo "gadget '$name' up on $udc"
 	net_up "$g"
-	[ "$plan" -ef "$RUNPLAN" ] || cp "$plan" "$RUNPLAN"
+	mv "$plan" "$RUNPLAN"
 	if [ -n "$console" ]; then
 		tty=ttyGS$(cat "$g/$console/port_num")
 		sh "$CONSOLE" start "$tty" 9>&-    # the shell must not hold the lock
@@ -188,8 +219,8 @@ down() {
 }
 
 # one change at a time (busybox flock, where built in)
-if [ "$1" != list ] && command -v flock >/dev/null; then
-	exec 9>/run/gadget.lock
+if [ "$1" != list ] && [ "$1" != plan ] && command -v flock >/dev/null; then
+	exec 9>"$R/run/gadget.lock"
 	flock 9
 fi
 
@@ -202,5 +233,7 @@ list)
 	done ;;
 remove) [ -n "$2" ] || die "usage: gadget.sh remove NAME"; remove "$2" ;;
 set) [ -n "$2" ] || die "usage: gadget.sh set FUNCTION ATTR=VALUE..."; shift; set_attrs "$@" ;;
-*) echo "usage: gadget.sh up [PLAN] | down [NAME] | list | remove NAME | set FUNCTION ATTR=VALUE..." >&2; exit 2 ;;
+plan) p=${2:-$PLAN}; [ -f "$p" ] || die "no plan $p"; effective "$p" ;;
+*) echo "usage: gadget.sh up [PLAN] | down [NAME] | list | remove NAME | set FUNCTION ATTR=VALUE... | plan [PLAN]" >&2
+	exit 2 ;;
 esac

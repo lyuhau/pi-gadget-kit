@@ -1,8 +1,13 @@
 #!/bin/sh
 # USB serial gadget with a root shell, for when Wi-Fi/SSH don't come up. The
 # Mac sees /dev/cu.usbmodem*. gadget.sh unbinds it to take over the port (a
-# device with [device] console has its own).
+# device with [device] console has its own). Only with the card's setting
+# console = on (default: [access] debug_console).
 G=/sys/kernel/config/usb_gadget/console
+SETTING_CONSOLE=on
+[ -f /etc/usb-gadget/settings.defaults ] && . /etc/usb-gadget/settings.defaults
+[ -f /run/usb-gadget/settings.env ] && . /run/usb-gadget/settings.env
+[ "$SETTING_CONSOLE" = off ] && exit 0
 modprobe libcomposite
 mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
 [ -d $G ] && exit 0

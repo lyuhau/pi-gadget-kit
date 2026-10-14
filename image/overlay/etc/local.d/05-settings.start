@@ -1,0 +1,5 @@
+#!/bin/sh
+# The card's settings.txt (README: Card settings), before the console and the
+# device use them: hostname, SSH keys; log: /var/log/settings.log.
+[ -f /etc/usb-gadget/settings.sh ] || exit 0
+sh /etc/usb-gadget/settings.sh boot

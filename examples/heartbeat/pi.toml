@@ -35,3 +35,5 @@ run = "/opt/heartbeat/run.sh"
 state = true                                  # /var/lib/heartbeat is the card's heartbeat/
 keep_logs = true                              # /var/log on the card: logs/last, logs/prev
 config_txt = ["dtparam=act_led_trigger=none"] # the LED stays dark until the app blinks it
+# on the card's settings.txt as heartbeat.blink; run.sh gets $APP_SETTING_BLINK
+settings = { blink = { default = "1", help = "Seconds between blinks: 1 to 10." } }

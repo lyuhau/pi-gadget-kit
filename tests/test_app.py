@@ -146,7 +146,7 @@ class Files(unittest.TestCase):
         self.assertEqual(bc.config_txt(cfg), bc.BOOT_CONFIG)
 
     def test_shell_syntax(self):
-        for p in ("image/app.sh", "image/init", "gadget.sh", "examples/heartbeat/app/run.sh"):
+        for p in ("image/app.sh", "image/init", "image/settings.sh", "gadget.sh", "examples/heartbeat/app/run.sh"):
             with self.subTest(p):
                 subprocess.run(["sh", "-n", os.path.join(REPO, p)], check=True)
 
@@ -191,7 +191,7 @@ class Diskless(unittest.TestCase):
         runlevels = {p.split("/")[-1] for p in m if p.startswith("etc/runlevels/") and m[p][0].issym()}
         self.assertEqual(runlevels, {"local", "networking", "chronyd"})  # no Wi-Fi, no SSH key
         self.assertNotIn("root/.ssh/authorized_keys", m)
-        self.assertNotIn("etc/local.d/10-usb-console.start", m)
+        self.assertIn("SETTING_CONSOLE=off\n", m["etc/usb-gadget/settings.defaults"][1].decode())  # still on the card
 
     def test_owns_time(self):
         cfg = load()
