@@ -8,3 +8,4 @@ out/
 # the template commits config/ but keeps wifi.local ignored.
 /config/
 wifi.local
+*.iml
