@@ -13,7 +13,8 @@ folder (include = "pi.toml"), and run an app ([app]; README: Apps).
 
 Steps:
   1. Alpine release tarball, verified against [alpine] sha256 (cached in out/cache/)
-  2. the patched gadget modules (out/modules/), checked against its kernel
+  2. the patched gadget modules (out/modules/, from alpine-module/fetch.sh or
+     build.sh), checked against its kernel
   3. the [device] plan, written to out/device.plan and the card (with the
      list of its functions, /etc/usb-gadget/functions)
   4. packages Alpine doesn't bundle, downloaded into the card's apk cache via
@@ -84,7 +85,7 @@ BOOT_CONFIG = ["dtoverlay=dwc2,dr_mode=peripheral"]
 # "local" runs /etc/local.d/*.start (patched modules, debug console, device);
 # wpa_supplicant/networking go in "default", once the Wi-Fi driver has loaded.
 SERVICES = {"boot": ["local"], "default": ["wpa_supplicant", "networking", "sshd", "chronyd"]}
-# Gadget modules from alpine-module/build.sh (patched, or built with them),
+# Gadget modules from alpine-module/build.sh or fetch.sh (patched, or built with them),
 # loaded at boot in dependency order before anything can pull in the stock
 # ones. The unpatched ones would also load next to the patched (symbol CRCs
 # match), but from one build every function is the same, and pi_kmods.sh
@@ -220,10 +221,11 @@ def read_kmods(release):
     for m in KMODS:
         src = os.path.join(KMODS_DIR, m + ".ko")
         if not os.path.exists(src):
-            sys.exit(f"{src} missing: run alpine-module/build.sh")
+            sys.exit(f"{src} missing: run alpine-module/fetch.sh (prebuilt) or alpine-module/build.sh (Docker)")
         kmods[m] = read(src)
         if f"vermagic={release} ".encode() not in kmods[m]:
-            sys.exit(f"{m}.ko wasn't built for this release's kernel {release}: rebuild with alpine-module/build.sh")
+            sys.exit(f"{m}.ko wasn't built for this release's kernel {release}: get its modules with "
+                     "alpine-module/fetch.sh or build.sh (kernel.env names the kernel; README: Changing the Alpine release)")
     print(f"{len(KMODS)} modules for kernel {release}")
     return kmods
 

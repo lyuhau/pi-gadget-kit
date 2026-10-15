@@ -25,13 +25,17 @@ One device at a time: the Zero 2 W has a single USB device port.
   reproduced is listed as a note when the card is built. The full list is in
   `gadget_plan.py`.
 
-For full control, the `raw_gadget` module (in `out/modules/`, not installed on
-the card) lets a program on the Pi answer every USB request itself.
+For full control, the `raw_gadget` module (built into `out/modules/` by
+`alpine-module/build.sh`, not installed on the card) lets a program on the Pi
+answer every USB request itself.
 
 ## Requirements (Mac)
 
-- Docker for the builds, e.g. `brew install colima docker`, then
-  `colima start --vm-type vz --cpu 6 --memory 12` (once per Mac restart)
+- Docker, only for building the patched modules yourself or for the
+  `diskless` image type, e.g. `brew install colima docker`, then
+  `colima start --vm-type vz --cpu 6 --memory 12` (once per Mac restart).
+  The `initramfs` type with the prebuilt modules needs none, and builds on
+  Linux too.
 - `brew install rpiboot`, to write the SD card through the Pi (no card reader needed)
 - A venv. `tomli` is needed because Apple's Python is 3.9. Use Apple's
   `/usr/bin/python3`: some Homebrew builds crash pip.
@@ -54,8 +58,11 @@ keeps `wifi.local` out of git.
    `COUNTRY=US` lines. The Zero 2 W only does 2.4 GHz. Optional: with
    `wifi = ""` the Pi leaves Wi-Fi alone (as it does SSH with
    `ssh_public_key = ""`).
-4. **Patched modules:** `alpine-module/build.sh` writes them to
-   `out/modules/`. The first run downloads about 150 MB of kernel source.
+4. **Patched modules:** `alpine-module/fetch.sh` downloads the prebuilt ones
+   (this repo's release `modules-KERNEL-PKGREL`, checked against
+   `MODULES_SHA256` in `kernel.env`) into `out/modules/`;
+   `alpine-module/build.sh` builds them (Docker; the first run downloads about
+   150 MB of kernel source).
 
 ## Hand-written devices
 
@@ -351,6 +358,12 @@ release:
 2. Update `alpine-module/kernel.env` with the kernel version and checksums
    from that branch's `main/linux-rpi/APKBUILD` in aports.
 3. Rebuild with `alpine-module/build.sh`. The patches may need adjusting.
+4. Publish them for `fetch.sh`: `alpine-module/pack.sh` packs the modules
+   `build_card.py` uses into `out/gadget-modules-KERNEL-PKGREL.tar.gz` and
+   prints its sha256, which goes in `kernel.env` (`MODULES_SHA256`); then
+   release it:
+   `gh release create modules-KERNEL-PKGREL out/gadget-modules-*.tar.gz out/SHA256SUMS`
+   (`SHA256SUMS`: `cd out && shasum -a 256 gadget-modules-KERNEL-PKGREL.tar.gz > SHA256SUMS`).
 
 `build_card.py` refuses modules built for a different kernel than the
 release's. The initramfs type also needs the release kernel's `linux-rpi`
@@ -372,7 +385,7 @@ the build works only from the copy in `out/cache/`.
 | `gadget_plan.py` | Device description → plan of configfs operations (run by `build_card.py`) |
 | `gadget.sh` | On the Pi: apply the plan (`up` / `down` / `list` / `set`) |
 | `tests/` | Golden plans for `gadget_plan.py`, `[app]` builds, card settings: `.venv/bin/python -m unittest discover tests` |
-| `alpine-module/` | Patched gadget modules (`patches/`, built in Docker for `kernel.env`'s kernel); `pi_kmods.sh` loads them on the Pi |
+| `alpine-module/` | Patched gadget modules (`patches/`, built in Docker for `kernel.env`'s kernel by `build.sh`, or prebuilt from a release by `fetch.sh`); `pi_kmods.sh` loads them on the Pi |
 | `pi_console.py` | Runs commands over the Pi's USB debug console |
 | `out/` | Build output: modules, `device.plan`, card contents, manifests |
 

@@ -1,0 +1,16 @@
+# Unit tests (README: Layout, tests/). The patched modules aren't built here:
+# alpine-module/build.sh (Docker) or fetch.sh (the prebuilt release).
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.12"}
+      - run: python -m unittest discover tests
