@@ -602,7 +602,9 @@ def install(card, target, expected, keep=(), merge=None):
         p = os.path.join(target, name)
         shutil.rmtree(p) if os.path.isdir(p) and not os.path.islink(p) else os.remove(p)
     env = dict(os.environ, COPYFILE_DISABLE="1")
-    subprocess.run(["cp", "-RX", card + "/.", target + "/"], check=True, env=env)
+    # -X (macOS): no extended attributes, which FAT would keep as ._ files
+    cp = ["cp", "-RX"] if sys.platform == "darwin" else ["cp", "-R"]
+    subprocess.run(cp + [card + "/.", target + "/"], check=True, env=env)
     subprocess.run(["find", target, "-name", "._*", "-delete"], check=False,
                    stderr=subprocess.DEVNULL)
     if old is not None:  # the users' file, not the build's
