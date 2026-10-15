@@ -1,4 +1,4 @@
-# usb: a Raspberry Pi as a configurable USB device
+# pi-gadget-kit: a Raspberry Pi as a configurable USB device
 
 Build a Raspberry Pi Zero 2 W SD card from one config file, so the Pi boots
 into a known state and presents itself to a host as the USB device you
