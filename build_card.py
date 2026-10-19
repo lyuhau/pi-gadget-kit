@@ -600,7 +600,10 @@ def install(card, target, expected, keep=(), merge=None):
         if name in (".Spotlight-V100", ".fseventsd", ".Trashes") or name in keep or name in USER_FILES:
             continue
         p = os.path.join(target, name)
-        shutil.rmtree(p) if os.path.isdir(p) and not os.path.islink(p) else os.remove(p)
+        try:
+            shutil.rmtree(p) if os.path.isdir(p) and not os.path.islink(p) else os.remove(p)
+        except FileNotFoundError:
+            pass  # a "._" file macOS removed along with its file
     env = dict(os.environ, COPYFILE_DISABLE="1")
     # -X (macOS): no extended attributes, which FAT would keep as ._ files
     cp = ["cp", "-RX"] if sys.platform == "darwin" else ["cp", "-R"]

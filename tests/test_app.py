@@ -13,6 +13,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXAMPLE = os.path.join(REPO, "examples", "heartbeat")
@@ -172,6 +173,29 @@ class Install(unittest.TestCase):
             self.assertEqual(got, ["boot/initrd.img", "config.txt", "heartbeat/boots", "logs/last/app.log"])
             self.assertEqual(bc.read(os.path.join(target, "heartbeat/boots")), b"7")
             self.assertEqual(bc.read(os.path.join(target, "boot/initrd.img")), b"new")
+
+    def test_macos_metadata_files(self):
+        # On a FAT card, macOS removes "._X" itself when X is removed
+        with tempfile.TemporaryDirectory() as tmp:
+            card, target = os.path.join(tmp, "build"), os.path.join(tmp, "card")
+            for d, files in ((card, {"config.txt": "new"}),
+                             (target, {".alpine-release": "", "._.alpine-release": "", "config.txt": "old",
+                                       "._config.txt": "", "settings.txt": "mine", "._settings.txt": ""})):
+                for p, text in files.items():
+                    os.makedirs(os.path.dirname(os.path.join(d, p)), exist_ok=True)
+                    with open(os.path.join(d, p), "w") as f:
+                        f.write(text)
+            remove = os.remove
+
+            def macos_remove(path):
+                remove(path)
+                meta = os.path.join(os.path.dirname(path), "._" + os.path.basename(path))
+                if os.path.exists(meta):
+                    remove(meta)
+            with mock.patch("os.remove", macos_remove), contextlib.redirect_stdout(io.StringIO()):
+                bc.install(card, target, bc.manifest(card))
+            self.assertEqual(sorted(os.listdir(target)), ["config.txt", "settings.txt"])
+            self.assertEqual(bc.read(os.path.join(target, "settings.txt")), b"mine")
 
     def test_nothing_kept_without_state(self):
         cfg = load()
