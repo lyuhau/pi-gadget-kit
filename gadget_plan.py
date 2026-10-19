@@ -369,6 +369,7 @@ FUNCTION_DEFAULTS = {
     "ncm": {"dev_addr": None, "host_addr": None, "qmult": None, "ifname": None, "max_segment_size": None},
     "rndis": {"dev_addr": None, "host_addr": None, "qmult": None, "ifname": None},
 }
+STRING_FIELDS = {"iManufacturer": "manufacturer", "iProduct": "product", "iSerialNumber": "serialnumber"}
 DEVICE_DEFAULTS = {"idVendor": None, "idProduct": None, "bcdDevice": 0x0100, "bcdUSB": 0x0200,
                    "bDeviceClass": 0, "bDeviceSubClass": 0, "bDeviceProtocol": 0, "bMaxPacketSize0": 64}
 
@@ -379,10 +380,12 @@ def complete_stream(where, d):
     check_keys(where, d, set(ALT_DEFAULTS) | set(STREAM_DEFAULTS))
     st = {k: d.get(k, v) for k, v in STREAM_DEFAULTS.items()}
     st["alts"] = [{k: d.get(k, v) for k, v in ALT_DEFAULTS.items()}]
-    if st["volume"]:
+    if st["volume"] is not None and st["volume"] is not False:
+        # a table, even empty: present; what it leaves out keeps the kernel's default
         check_keys(f"{where}.volume", st["volume"], {"min", "max", "res"})
-        if len(st["volume"]) != 3:
-            sys.exit(f"{where}.volume: needs min, max and res (in 1/256 dB)")
+        st["volume"] = {k: st["volume"].get(k) for k in ("min", "max", "res")}
+    else:
+        st["volume"] = None
     return st
 
 
@@ -391,18 +394,24 @@ def complete(desc, where="description"):
     check_keys(where, desc, {"format", "speed", "device", "strings", "config", "functions"})
     if desc.get("format", MODEL_FORMAT) != MODEL_FORMAT:
         sys.exit(f"{where}: format {desc['format']} != {MODEL_FORMAT}")
-    check_keys(f"{where} [device]", desc.get("device", {}), DEVICE_DEFAULTS)
+    check_keys(f"{where} [device]", desc.get("device", {}), set(DEVICE_DEFAULTS) | set(STRING_FIELDS))
     dev = {k: desc.get("device", {}).get(k, v) for k, v in DEVICE_DEFAULTS.items()}
     if dev["idVendor"] is None or dev["idProduct"] is None:
         sys.exit(f"{where}: [device] needs idVendor and idProduct")
     strings = desc.get("strings", {})
-    check_keys(f"{where} [strings]", strings, {"manufacturer", "product", "serialnumber"})
+    check_keys(f"{where} [strings]", strings, set(STRING_FIELDS.values()) | {"extra"})
     table = {}
-    for idx, (key, field) in enumerate((("manufacturer", "iManufacturer"), ("product", "iProduct"),
-                                        ("serialnumber", "iSerialNumber")), 1):
-        if strings.get(key):
-            table[str(idx)] = strings[key]
-        dev[field] = idx if strings.get(key) else 0
+    for idx, (field, key) in enumerate(STRING_FIELDS.items(), 1):
+        if key in strings:  # "" is a string too: present, and empty
+            table[str(idx)] = str(strings[key])
+        # the descriptor points to the string by default; [device] iSerialNumber = 0
+        # keeps a string the device has but doesn't reference
+        dev[field] = desc.get("device", {}).get(field, idx if key in strings else 0)
+    extra = strings.get("extra", [])
+    if not isinstance(extra, list):
+        sys.exit(f"{where} [strings]: extra is a list of strings (indices 4, 5, ...)")
+    for idx, text in enumerate(extra, 4):
+        table[str(idx)] = str(text)
     cfg = desc.get("config", {})
     check_keys(f"{where} [config]", cfg, {"bmAttributes", "configuration", "max_power_ma"})
     speed = desc.get("speed", "high-speed")

@@ -53,7 +53,9 @@ keeps `wifi.local` out of git.
 1. **Image config:** `mkdir -p config && cp image/template.toml config/pi.toml`,
    then edit it. Each setting is commented.
 2. **Device:** put the description at `config/device.json`, or write one by
-   hand (see [Hand-written devices](#hand-written-devices)).
+   hand (see [Hand-written devices](#hand-written-devices)). To start a
+   hand-written one from a capture, run
+   `.venv/bin/python capture_to_toml.py capture.json -o config/device.toml`.
 3. **Wi-Fi:** create `config/wifi.local` with `SSID=…`, `PASSWORD=…` and
    `COUNTRY=US` lines. The Zero 2 W only does 2.4 GHz. Optional: with
    `wifi = ""` the Pi leaves Wi-Fi alone (as it does SSH with
@@ -99,13 +101,24 @@ channels = 1
 
 | `kind` | Settings besides `id` |
 |---|---|
-| `uac2`, `uac1` | `name` (control interface), `function_name` (uac2), `req_number`; per direction `channels` or `chmask`, `rates` (up to 10), `subslot_bytes`, `sync`, `bInterval` (high-speed `hs_bint`, 0 = auto), `mute`, `volume = {min, max, res}` (1/256 dB), `terminal_type`, terminal, unit, channel and clock names |
+| `uac2`, `uac1` | `name` (control interface), `function_name` (uac2), `req_number`; per direction `channels` or `chmask`, `rates` (up to 10), `subslot_bytes`, `sync`, `bInterval` (high-speed `hs_bint`, 0 = auto), `mute`, `volume = {min, max, res}` (1/256 dB; any left out keep the kernel's default), `terminal_type`, terminal, unit, channel and clock names |
 | `hid` | `report_desc` (hex, required), `subclass`, `protocol`, `report_length`, `name`, `has_out_endpoint`, `bInterval` |
 | `ecm`, `ncm`, `rndis` | `dev_addr`, `host_addr`, `qmult`, `ifname` (with one `%d`), `max_segment_size` (ncm) |
 | `acm` | `protocol` |
 
+**Strings:** `manufacturer`, `product` and `serialnumber` are strings 1, 2
+and 3, and `extra = [...]` continues at 4. The device descriptor points to the
+first three; to keep one the device has but doesn't point to, set it to 0 in
+`[device]` (`iSerialNumber = 0`).
+
 The full list, and what stock UAC2 can't match, is in `gadget_plan.py`; the
 descriptions in `tests/data/` use every setting.
+
+**From a capture:** `capture_to_toml.py` writes a capture as a hand-written
+description, leaving out defaults and listing what can't be reproduced as
+comments. It checks that the TOML plans exactly like the capture, and doesn't
+overwrite an existing file without `--force`. Edit the result to add what a
+capture can't know: `id`s, networking, `req_number`, uac2's `function_name`.
 
 **Names**, for apps that change the device at runtime (see [Apps](#apps)):
 the gadget is `/sys/kernel/config/usb_gadget/device`, each function

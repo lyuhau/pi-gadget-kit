@@ -7,10 +7,13 @@ idProduct = 0x0001
 bcdDevice = 0x0203
 bDeviceClass = 0
 bMaxPacketSize0 = 64
+iSerialNumber = 0     # the device has string 3 but doesn't point to it
 
 [strings]
 manufacturer = "usb"
 product = "Kitchen Sink"
+serialnumber = "K-0001"
+extra = ["Spare", ""]
 
 [config]
 bmAttributes = 0xc0

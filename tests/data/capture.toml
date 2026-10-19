@@ -1,0 +1,76 @@
+# Converted from capture.json by capture_to_toml.py.
+# Not reproduced: interface 6 (class 0xff, vendor): no gadget function, left out
+
+speed = "full-speed"
+
+[device]
+idVendor = 0x1209
+idProduct = 0x0001
+bcdDevice = 0x0110
+iSerialNumber = 0
+
+[strings]
+manufacturer = ""
+product = ""
+serialnumber = ""
+extra = ["", ""]
+
+[[functions]]
+kind = "uac1"
+
+[functions.host_to_device]
+channels = 2
+bit_resolution = 16
+sync = "adaptive"
+bInterval = 1
+wMaxPacketSize = 192
+endpoint = 0x0003
+mute = true
+terminal_type = 0x0302
+terminal_id = 36
+usb_terminal_id = 38
+fu_id = 34
+fu_control_size = 1
+volume = { min = -19712, max = 0, res = 1 }
+
+[functions.device_to_host]
+channels = 1
+bit_resolution = 16
+sync = "async"
+bInterval = 1
+wMaxPacketSize = 96
+endpoint = 0x0083
+mute = true
+terminal_type = 0x0402
+terminal_id = 35
+usb_terminal_id = 39
+fu_id = 40
+fu_control_size = 1
+volume = { min = -21248, max = 0, res = 1 }
+
+[[functions]]
+kind = "hid"
+report_length = 64
+report_desc = "06c0ff0901a10106c1ff150026ff00750809f09540810209f19540910209f2960202b102c0"
+bcdHID = 0x0110
+country_code = 0
+has_out_endpoint = false
+bInterval = 1
+
+[[functions]]
+kind = "hid"
+report_length = 4
+report_desc = "050c0901a10109e909ea750195021500250181027506950181039503750109b609cd09b58102751595018103c0"
+bcdHID = 0x0110
+country_code = 0
+has_out_endpoint = false
+bInterval = 1
+
+[[functions]]
+kind = "hid"
+report_length = 64
+report_desc = "0600ff0901a1010601ff150026ff00750809f09540810209f195409102c0"
+bcdHID = 0x0110
+country_code = 0
+has_out_endpoint = false
+bInterval = 1

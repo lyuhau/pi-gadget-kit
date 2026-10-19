@@ -69,6 +69,22 @@ class HandWritten(unittest.TestCase):
         self.assertIn("write functions/uac2.0/p_srate 48000", ops)
         self.assertIn("write functions/uac2.0/p_volume_present 0", ops)
 
+    def test_strings(self):
+        desc = dict(self.BASE, strings={"manufacturer": "", "serialnumber": "S1", "extra": ["four", "five"]})
+        desc["device"] = dict(desc["device"], iSerialNumber=0)
+        m = gadget_plan.complete(desc)
+        self.assertEqual(m["strings"]["table"], {"1": "", "3": "S1", "4": "four", "5": "five"})
+        self.assertEqual([m["device"][k] for k in ("iManufacturer", "iProduct", "iSerialNumber")], [1, 0, 0])
+        ops = gadget_plan.build_plan(m).ops
+        self.assertIn("write hide_strings 4", ops)  # string 3 present, not pointed to
+        self.assertIn("write strings/0x409/s5/s five", ops)
+
+    def test_partial_volume(self):
+        ops = self.plan([{"kind": "uac2", "host_to_device": {"volume": {"min": -100, "max": 0}}}]).ops
+        self.assertIn("write functions/uac2.0/c_volume_present 1", ops)
+        self.assertIn("write functions/uac2.0/c_volume_min -100", ops)
+        self.assertFalse(any("c_volume_res" in op for op in ops))  # the kernel's default
+
     def test_refusals(self):
         self.assertIn("unknown keys", self.refused([{"kind": "ecm", "mac": "x"}]))
         self.assertIn("kind is one of", self.refused([{"kind": "msc"}]))

@@ -15,7 +15,12 @@ write max_speed high-speed
 mkdir strings/0x409
 write strings/0x409/manufacturer usb
 write strings/0x409/product Kitchen Sink
-write hide_strings 0
+write strings/0x409/serialnumber K-0001
+write hide_strings 4
+mkdir strings/0x409/s4
+write strings/0x409/s4/s Spare
+mkdir strings/0x409/s5
+write strings/0x409/s5/s
 mkdir configs/c.1
 write configs/c.1/bmAttributes 0x00c0
 write configs/c.1/MaxPower 100
