@@ -143,6 +143,26 @@ def download(url, path):
     os.replace(path + ".part", path)
 
 
+def pinned_kernel(ver, pkgrel, have):
+    """The linux-rpi package kernel.env pins, from out/kernel/ (alpine-module/fetch.sh
+    mirrors it), checked against KERNEL_APK_SHA256; the caller checks its kernel
+    against the release's. -> (data tar, sha256, file name)"""
+    fname = f"linux-rpi-{ver}-r{pkgrel}.apk"
+    path = os.path.join(bc.OUT, "kernel", fname)
+    env = dict(line.split("=", 1) for line in open(os.path.join(bc.REPO, "alpine-module", "kernel.env"))
+               .read().splitlines() if "=" in line and not line.startswith("#"))
+    want = env.get("KERNEL_APK_SHA256")
+    if not want or not os.path.exists(path):
+        sys.exit(f"linux-rpi={ver}-r{pkgrel} wanted, but the repositories have {have or 'none'}, and "
+                 f"there's no pinned copy in {path}: run alpine-module/fetch.sh")
+    data = open(path, "rb").read()
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != want:
+        sys.exit(f"{path}: sha256 {digest}, but kernel.env's KERNEL_APK_SHA256 is {want}")
+    print(f"linux-rpi {ver}-r{pkgrel}: the pinned copy (the repositories have {have})")
+    return gzip_streams(data)[2][1], digest, fname
+
+
 class Repos:
     """The release's apks/ plus the configured repositories, as apk would see
     them, with every download checked."""
@@ -523,8 +543,11 @@ def build(cfg, tarball, card, files, refetch, lock_path):
 
         bc.step("kernel and firmware")
         ver, pkgrel = rel.split("-")[:2]
-        repos.pick(f"linux-rpi={ver}-r{pkgrel}")
-        _, kernel, digest, fname = repos.fetch("linux-rpi")
+        have = repos.pkgs.get("linux-rpi", {}).get("V")
+        if have == f"{ver}-r{pkgrel}":
+            _, kernel, digest, fname = repos.fetch("linux-rpi")
+        else:                       # Alpine keeps only the newest: the copy fetch.sh mirrored
+            kernel, digest, fname = pinned_kernel(ver, pkgrel, have)
         lock.append(f"{digest}  {fname}")
         vmlinuz = next(d for m, d in tar_members(kernel) if m.name == "boot/vmlinuz-rpi")
         if vmlinuz != open(os.path.join(card, KERNEL), "rb").read():

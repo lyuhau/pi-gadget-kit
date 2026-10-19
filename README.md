@@ -364,6 +364,13 @@ release:
    release it:
    `gh release create modules-KERNEL-PKGREL out/gadget-modules-*.tar.gz out/SHA256SUMS`
    (`SHA256SUMS`: `cd out && shasum -a 256 gadget-modules-KERNEL-PKGREL.tar.gz > SHA256SUMS`).
+5. Mirror the kernel package on the same release, since Alpine's repositories
+   keep only the newest kernel and a pinned build stops working once it moves
+   on: upload `linux-rpi-KERNEL-PKGREL.apk` (from `out/cache/apks-*/`, after a
+   build) and add its line to `SHA256SUMS`; its sha256 goes in `kernel.env`
+   (`KERNEL_APK_SHA256`). `fetch.sh` downloads it to `out/kernel/`, and the build
+   uses it when the repositories have another version (still checked against the
+   release's kernel).
 
 `build_card.py` refuses modules built for a different kernel than the
 release's. The initramfs type also needs the release kernel's `linux-rpi`
