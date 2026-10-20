@@ -350,17 +350,18 @@ change while the function is in no configuration, and
   and a packet for an interface that's down jams it, audio and control
   requests included. `set` and `up` do that (addresses are the app's).
 
-**Dev and release:** keep two configs. The release one includes the dev one
-(same folder) and overrides what differs, section by section, key by key:
+**Dev and release:** keep two configs. The dev one includes the release one
+(same folder) and adds the ways in, section by section, key by key, so a
+release image never inherits a dev setting:
 
 ```toml
+# pi-dev.toml
 include = "pi.toml"
 [access]
-ssh_public_key = ""          # no sshd
-debug_console = false
+ssh_public_key = "~/.ssh/id_ed25519.pub"
+debug_console = true
 [device]
-description = "device-release.toml"   # e.g. without the ECM function
-console = false
+dev_functions = true         # the description's dev = true functions, e.g. USB ethernet
 ```
 
 **Diskless** runs apps too, with OpenRC: `run` from
