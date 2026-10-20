@@ -87,6 +87,7 @@ max_power_ma = 250                            # also configuration, bmAttributes
 [[functions]]                                 # in interface order
 kind = "ecm"
 id = "net"
+dev = true                                    # only with [device] dev_functions (see below)
 dev_addr = "02:a0:00:00:00:01"                # left out: random at every boot
 host_addr = "02:a0:00:00:00:02"
 
@@ -99,7 +100,12 @@ rates = [48000]                               # defaults: 48 kHz, 2 channels, 2 
 channels = 1
 ```
 
-| `kind` | Settings besides `id` |
+**Dev functions:** a function with `dev = true` is only in images whose
+config has `[device] dev_functions = true`, like a package manager's dev
+dependencies: USB ethernet for SSH in a dev image, say, left out of the release
+image built from the same description. A build lists what it left out.
+
+| `kind` | Settings besides `id` and `dev` |
 |---|---|
 | `uac2`, `uac1` | `name` (control interface), `function_name` (uac2), `req_number`; per direction `channels` or `chmask`, `rates` (up to 10), `subslot_bytes`, `sync`, `bInterval` (high-speed `hs_bint`, 0 = auto), `mute`, `volume = {min, max, res}` (1/256 dB; any left out keep the kernel's default), `terminal_type`, terminal, unit, channel and clock names |
 | `hid` | `report_desc` (hex, required), `subclass`, `protocol`, `report_length`, `name`, `has_out_endpoint`, `bInterval` |

@@ -61,7 +61,7 @@ CONFIG_KEYS = {
     "alpine": {"version", "arch", "sha256"},
     "system": {"hostname", "packages", "repositories"},
     "access": {"wifi", "ssh_public_key", "debug_console"},
-    "device": {"description", "max_speed", "test_ids", "start_at_boot", "console"},
+    "device": {"description", "max_speed", "test_ids", "start_at_boot", "console", "dev_functions"},
     "app": {"name", "files", "overlay", "run", "owns", "state", "keep_logs", "config_txt", "kmods", "settings"},
 }
 # What an app can take over from the platform ([app] owns).
@@ -246,7 +246,8 @@ def make_plan(cfg):
         print("no [device]: the Pi only offers the debug console")
         return None
     text, p = gadget_plan.plan_from_file(rel(dev["description"]), max_speed=dev.get("max_speed") or None,
-                                         test_ids=dev.get("test_ids", False), console=dev.get("console", False))
+                                         test_ids=dev.get("test_ids", False), console=dev.get("console", False),
+                                         dev=dev.get("dev_functions", False))
     text = text.replace(f"from {rel(dev['description'])}", f"from {dev['description']}")
     path = os.path.join(OUT, f"device{VARIANT}.plan")
     old = open(path).read() if os.path.exists(path) else None

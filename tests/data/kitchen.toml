@@ -60,6 +60,7 @@ max_segment_size = 1514
 
 [[functions]]
 kind = "rndis"
+dev = true
 
 [[functions]]
 kind = "hid"

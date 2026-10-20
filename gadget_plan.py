@@ -7,6 +7,7 @@ itself as described. gadget.sh replays a plan on the Pi.
   gadget_plan.py config/device.json -o out/device.plan
   gadget_plan.py config/device.json --max-speed high-speed --test-ids
   gadget_plan.py config/device.toml --console
+  gadget_plan.py config/device.toml --dev       # with the functions marked dev = true
 
 build_card.py runs this for the card; run it by hand only to experiment.
 Plans are deterministic, so they can be diffed. Plans assume the patched
@@ -24,6 +25,10 @@ Names: the gadget is /sys/kernel/config/usb_gadget/NAME (default "device"),
 its functions are functions/KIND.ID, ID being the function's "id" or, without
 one, a count per kind from 0 (uac1.0, hid.0, hid.1). The debug console
 (--console) is acm.console. functions_text() lists them for apps.
+
+Dev functions: a hand-written function with dev = true (USB ethernet for SSH,
+say) is only in plans made with --dev (build_card.py: [device] dev_functions),
+like a package manager's dev dependencies; other plans leave it out.
 
 Reproduced: device IDs and class, strings (a contiguous run 1..N, including
 unreferenced ones), configuration attributes and power, UAC1 audio (fully,
@@ -281,12 +286,15 @@ PLANNERS = {"uac1": plan_audio, "uac2": plan_audio, "hid": plan_hid, "acm": plan
             **{k: plan_net for k in NET_KINDS}}
 
 
-def build_plan(model, name="device", max_speed=None, test_ids=False, console=False):
+def build_plan(model, name="device", max_speed=None, test_ids=False, console=False, dev=False):
     if model.get("format") != MODEL_FORMAT:
         sys.exit(f"description model format {model.get('format')} != {MODEL_FORMAT}: "
                  "run usb-capture's capture_usb.py refresh, or update gadget_plan.py")
     p = Plan(name)
-    functions = model["functions"] + ([CONSOLE] if console else [])
+    functions = [fn for fn in model["functions"] if dev or not fn.get("dev")] + ([CONSOLE] if console else [])
+    for fn in model["functions"]:
+        if fn.get("dev") and not dev:
+            p.note(f"{fn.get('id') or fn['kind']}: a dev function, left out (--dev / [device] dev_functions)")
     dv = model["device"]
     vid, pid = (0x1209, 0x0001) if test_ids else (dv["idVendor"], dv["idProduct"])
     p.write("idVendor", hexw(vid))
@@ -424,8 +432,12 @@ def complete(desc, where="description"):
         kind = fn.get("kind") if isinstance(fn, dict) else None
         if kind not in FUNCTION_DEFAULTS:
             sys.exit(f"{at}: kind is one of {', '.join(FUNCTION_DEFAULTS)}")
-        check_keys(at, fn, {"kind", "id"} | set(FUNCTION_DEFAULTS[kind]))
+        check_keys(at, fn, {"kind", "id", "dev"} | set(FUNCTION_DEFAULTS[kind]))
         out = {"kind": kind, "interface": i, **{k: fn.get(k, v) for k, v in FUNCTION_DEFAULTS[kind].items()}}
+        if not isinstance(fn.get("dev", False), bool):
+            sys.exit(f"{at}: dev is true or false")
+        if fn.get("dev"):
+            out["dev"] = True
         if "id" in fn:
             if not re.fullmatch(r"[A-Za-z0-9_-]+", str(fn["id"])):
                 sys.exit(f"{at}: id {fn['id']!r}: use letters, digits, _ and -")
@@ -483,12 +495,15 @@ def load_model(description, index=None):
     return complete(data, description)
 
 
-def plan_from_file(description, name="device", index=None, max_speed=None, test_ids=False, console=False):
-    p = build_plan(load_model(description, index), name, max_speed, test_ids, console)
+def plan_from_file(description, name="device", index=None, max_speed=None, test_ids=False, console=False,
+                   dev=False):
+    p = build_plan(load_model(description, index), name, max_speed, test_ids, console, dev)
     options = (f"name={name} "
                f"max_speed={max_speed or 'as-described'} test_ids={'yes' if test_ids else 'no'}")
     if console:
         options += " console=yes"
+    if dev:
+        options += " dev=yes"
     return render(p, description, options), p
 
 
@@ -501,9 +516,10 @@ def main():
     a.add_argument("--max-speed", choices=["full-speed", "high-speed"], help="override the described speed")
     a.add_argument("--test-ids", action="store_true", help="use test VID:PID 1209:0001")
     a.add_argument("--console", action="store_true", help="include the debug console (acm.console)")
+    a.add_argument("--dev", action="store_true", help="include the functions marked dev = true")
     args = a.parse_args()
     text, p = plan_from_file(args.description, args.name, args.index, args.max_speed, args.test_ids,
-                             args.console)
+                             args.console, args.dev)
     if args.output:
         with open(args.output, "w") as f:
             f.write(text)

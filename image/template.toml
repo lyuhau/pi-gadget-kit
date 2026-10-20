@@ -57,6 +57,7 @@ max_speed = ""         # "" = as described, or "full-speed" / "high-speed"
 test_ids = false       # true: VID:PID 1209:0001 instead of the described IDs
 start_at_boot = false  # false: boot to the debug console; start it with gadget.sh up
 console = false        # true: the device includes the debug console (acm.console), while it's on
+dev_functions = false  # true: also the description's functions marked dev = true (e.g. USB ethernet for SSH)
 
 # Your own program on the Pi, started right after the device (README: Apps).
 # Remove this section for none.

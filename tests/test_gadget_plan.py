@@ -22,8 +22,9 @@ import gadget_plan  # noqa: E402
 CASES = [
     ("capture.json", {}, "capture"),  # a usb-capture capture: UAC1, three HID, one unsupported
     ("capture.json", {"max_speed": "high-speed", "test_ids": True}, "capture-hs"),
-    ("audiolink.toml", {"console": True}, "audiolink"),  # UAC2 + ECM + the debug console
-    ("kitchen.toml", {"console": True}, "kitchen"),  # every hand-written setting
+    ("audiolink.toml", {"console": True, "dev": True}, "audiolink"),  # UAC2 + ECM (dev) + the debug console
+    ("audiolink.toml", {"console": True}, "audiolink-release"),  # the same without its dev ECM
+    ("kitchen.toml", {"console": True, "dev": True}, "kitchen"),  # every hand-written setting
 ]
 
 
@@ -84,6 +85,15 @@ class HandWritten(unittest.TestCase):
         self.assertIn("write functions/uac2.0/c_volume_present 1", ops)
         self.assertIn("write functions/uac2.0/c_volume_min -100", ops)
         self.assertFalse(any("c_volume_res" in op for op in ops))  # the kernel's default
+
+    def test_dev_functions(self):
+        fns = [{"kind": "ecm", "id": "net", "dev": True}, {"kind": "uac2", "id": "audio", "host_to_device": {}}]
+        p = self.plan(fns)
+        self.assertEqual([i for _, _, i in p.functions], ["uac2.audio"])
+        self.assertIn("net: a dev function, left out (--dev / [device] dev_functions)", p.notes)
+        p = self.plan(fns, dev=True)
+        self.assertEqual([i for _, _, i in p.functions], ["ecm.net", "uac2.audio"])   # in interface order
+        self.assertIn("dev is true or false", self.refused([{"kind": "acm", "dev": "yes"}]))
 
     def test_refusals(self):
         self.assertIn("unknown keys", self.refused([{"kind": "ecm", "mac": "x"}]))
