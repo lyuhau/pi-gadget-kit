@@ -49,10 +49,16 @@ MODULES = bc.BOOT_MODULES + bc.KMODS + ["brcmfmac_cyw", "brcmfmac_wcc", "brcmfma
 MODULE_DIRS = ["kernel/drivers/usb/gadget/function/"]
 # Zero 2 W Wi-Fi firmware (both radio variants), from linux-firmware-*
 FIRMWARE = re.compile(r"lib/firmware/(brcm/brcmfmac4343[06]|cypress/cyfmac43430)")
-# Boot files for the Zero 2 W, from the release
-BOOT_FILES = ["bootcode.bin", "start.elf", "fixup.dat", "bcm2710-rpi-zero-2-w.dtb",
-              "overlays/dwc2.dtbo", "overlays/overlay_map.dtb", ".alpine-release"]
-KERNEL, INITRD = "boot/vmlinuz-rpi", "boot/initrd.img"
+# Boot files for the Zero 2 W, from the release. The image itself is in a slot
+# folder (SLOT): the firmware's config.txt at the top of the card only says which
+# slot boots (os_prefix, which the firmware puts in front of the kernel, initramfs,
+# cmdline.txt, device trees and, with overlays/README there, overlays), so another
+# image can go next to it in b/ and be tried (tryboot.txt) and switched to by
+# rewriting two lines. The firmware stays at the top, shared.
+FIRMWARE_FILES = ["bootcode.bin", "start.elf", "fixup.dat", ".alpine-release"]
+SLOT_FILES = ["bcm2710-rpi-zero-2-w.dtb", "overlays/dwc2.dtbo", "overlays/overlay_map.dtb"]
+SLOT = "a/"
+KERNEL, INITRD = "boot/vmlinuz-rpi", "boot/initrd.img"     # in the slot
 
 
 # ---------------------------------------------------------------- apk files
@@ -499,7 +505,15 @@ def add_files(tree, files):
         tree.file(p, data, mode)
 
 
+def slot_config(slot=SLOT):
+    """The top config.txt: which slot boots."""
+    return (f"# The image in {slot} boots: its own settings are in {slot}config.txt\n"
+            f"os_prefix={slot}\n"
+            f"include {slot}config.txt\n")
+
+
 def config_txt(cfg):
+    """The slot's config.txt (paths in it are the slot's: os_prefix comes first)."""
     return ("arm_64bit=1\n"
             f"kernel={KERNEL}\n"
             f"initramfs {INITRD} followkernel\n"
@@ -517,11 +531,16 @@ def build(cfg, tarball, card, files, refetch, lock_path):
         print(f"alpine-rpi {a['version']} {a['arch']}, kernel {rel}")
         bc.step("kernel modules")
         kmods = bc.read_kmods(rel)
-        for f in BOOT_FILES:
-            os.makedirs(os.path.dirname(os.path.join(card, f)), exist_ok=True)
+        slot = os.path.join(card, SLOT)
+        for f in FIRMWARE_FILES:
             shutil.copyfile(os.path.join(release, f), os.path.join(card, f))
-        os.makedirs(os.path.join(card, "boot"))
-        shutil.copyfile(os.path.join(release, "boot", "vmlinuz-rpi"), os.path.join(card, KERNEL))
+        for f in SLOT_FILES:
+            os.makedirs(os.path.dirname(os.path.join(slot, f)), exist_ok=True)
+            shutil.copyfile(os.path.join(release, f), os.path.join(slot, f))
+        with open(os.path.join(slot, "overlays", "README"), "w") as f:
+            f.write("This image's overlays (os_prefix: the firmware loads them from here only with this file)\n")
+        os.makedirs(os.path.join(slot, "boot"))
+        shutil.copyfile(os.path.join(release, "boot", "vmlinuz-rpi"), os.path.join(slot, KERNEL))
 
         bc.step("packages")
         repos = Repos(cfg, release, cache, refetch)
@@ -550,7 +569,7 @@ def build(cfg, tarball, card, files, refetch, lock_path):
             kernel, digest, fname = pinned_kernel(ver, pkgrel, have)
         lock.append(f"{digest}  {fname}")
         vmlinuz = next(d for m, d in tar_members(kernel) if m.name == "boot/vmlinuz-rpi")
-        if vmlinuz != open(os.path.join(card, KERNEL), "rb").read():
+        if vmlinuz != open(os.path.join(card, SLOT, KERNEL), "rb").read():
             sys.exit(f"linux-rpi {ver}-r{pkgrel} isn't the release's kernel")
         n = add_modules(tree, kernel, rel, kmods, (cfg.get("app") or {}).get("kmods", []))
         for pkg in ("linux-firmware-brcm", "linux-firmware-cypress"):
@@ -576,13 +595,15 @@ def build(cfg, tarball, card, files, refetch, lock_path):
         fp = base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("=")
         print(f"ssh host key SHA256:{fp} (kept in out/ssh-host-key-{s['hostname']}/)")
     data = tree.cpio()
-    with open(os.path.join(card, INITRD), "wb") as f:
+    with open(os.path.join(card, SLOT, INITRD), "wb") as f:
         f.write(data)
     with open(os.path.join(card, "config.txt"), "w") as f:
+        f.write(slot_config())
+    with open(os.path.join(card, SLOT, "config.txt"), "w") as f:
         f.write(config_txt(cfg))
-    with open(os.path.join(card, "cmdline.txt"), "w") as f:
+    with open(os.path.join(card, SLOT, "cmdline.txt"), "w") as f:
         f.write("console=tty1 rdinit=/init panic=5 quiet\n")
-    print(f"{INITRD}: {len(tree.entries)} entries, {len(data) / 1e6:.1f} MB")
+    print(f"{SLOT}{INITRD}: {len(tree.entries)} entries, {len(data) / 1e6:.1f} MB")
 
     old = open(lock_path).read() if os.path.exists(lock_path) else None
     text = "".join(l + "\n" for l in sorted(lock, key=lambda l: l[66:]))

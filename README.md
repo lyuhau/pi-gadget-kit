@@ -217,7 +217,11 @@ from RAM with the same kernel, packages, patched modules and config files.
   appears after about 17 s, services after about 27 s. On the Pi, `apk add`
   works and `lbu commit` saves changes to the card.
 - **`initramfs`**: `image_initramfs.py` unpacks the packages on the Mac into
-  one initramfs (`boot/initrd.img`, about 30 MB). The Pi's firmware loads it
+  one initramfs (`a/boot/initrd.img`, about 30 MB). The image (kernel,
+  initramfs, device tree, overlays, `cmdline.txt` and its own `config.txt`) is
+  in the slot folder `a/`; the card's `config.txt` only selects the slot
+  (`os_prefix=a/`, `include a/config.txt`), so another image can go in `b/`
+  next to it, be tried once (the firmware's `tryboot.txt`) and be switched to. The Pi's firmware loads it
   with the kernel, and `image/init` only starts things: watchdog, modules,
   the card, the same `/etc/local.d` scripts, the app, Wi-Fi, SSH, time. There is no OpenRC or
   apk (`alpine-base` is left out), so packages and changes only come with a

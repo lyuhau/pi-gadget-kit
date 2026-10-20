@@ -238,6 +238,9 @@ class Initramfs(unittest.TestCase):
         self.assertIn("opt/heartbeat", tree.entries)
         self.assertIn("etc/usb-gadget/app.env", tree.entries)
 
+    def test_slot_config(self):
+        self.assertEqual(image_initramfs.slot_config("b/").splitlines()[1:], ["os_prefix=b/", "include b/config.txt"])
+
     def test_config_txt(self):
         text = image_initramfs.config_txt(load())
         self.assertTrue(text.endswith("dtoverlay=dwc2,dr_mode=peripheral\ndtparam=act_led_trigger=none\n"))
