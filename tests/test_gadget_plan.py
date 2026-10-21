@@ -9,7 +9,9 @@ as a diff. After an intended change, regenerate and review the diff:
 import contextlib
 import io
 import os
+import subprocess
 import sys
+import tempfile
 import unittest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -94,6 +96,27 @@ class HandWritten(unittest.TestCase):
         p = self.plan(fns, dev=True)
         self.assertEqual([i for _, _, i in p.functions], ["ecm.net", "uac2.audio"])   # in interface order
         self.assertIn("dev is true or false", self.refused([{"kind": "acm", "dev": "yes"}]))
+
+    def test_no_extras(self):
+        fns = [{"kind": "ecm", "id": "net", "dev": True}, {"kind": "uac2", "id": "audio", "host_to_device": {}}]
+        m = gadget_plan.complete(dict(self.BASE, functions=fns, extras=False))
+        p = gadget_plan.build_plan(m, console=True, dev=True)
+        self.assertEqual([i for _, _, i in p.functions], ["uac2.audio"])  # no console, no dev ECM
+        self.assertNotIn("console functions/acm.console", p.ops)
+        self.assertIn("extras = false: no debug console or dev functions", p.notes)
+        self.assertNotIn("extras", gadget_plan.complete(dict(self.BASE, extras=True)))  # a capture's model, as before
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as e:
+            gadget_plan.complete(dict(self.BASE, extras="no"))
+        self.assertIn("extras is true or false", str(e.exception.code))
+
+    def test_functions_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = subprocess.run([sys.executable, os.path.join(REPO, "gadget_plan.py"), os.path.join(DATA, "kitchen.toml"),
+                                  "-o", os.path.join(tmp, "p"), "--functions", os.path.join(tmp, "f"), "--console"],
+                                 capture_output=True, text=True, check=True).stdout
+            self.assertIn("wrote", out)
+            text, p = gadget_plan.plan_from_file(os.path.join(DATA, "kitchen.toml"), console=True)
+            self.assertEqual(open(os.path.join(tmp, "f")).read(), gadget_plan.functions_text(p))
 
     def test_refusals(self):
         self.assertIn("unknown keys", self.refused([{"kind": "ecm", "mac": "x"}]))

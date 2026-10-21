@@ -8,8 +8,10 @@ itself as described. gadget.sh replays a plan on the Pi.
   gadget_plan.py config/device.json --max-speed high-speed --test-ids
   gadget_plan.py config/device.toml --console
   gadget_plan.py config/device.toml --dev       # with the functions marked dev = true
+  gadget_plan.py flavor.toml -o device.plan --functions functions
 
-build_card.py runs this for the card; run it by hand only to experiment.
+build_card.py runs this for the card, and gadget.sh on the Pi to plan a flavor
+(README: Flavors); run it by hand only to experiment.
 Plans are deterministic, so they can be diffed. Plans assume the patched
 gadget modules from alpine-module/.
 
@@ -29,6 +31,10 @@ one, a count per kind from 0 (uac1.0, hid.0, hid.1). The debug console
 Dev functions: a hand-written function with dev = true (USB ethernet for SSH,
 say) is only in plans made with --dev (build_card.py: [device] dev_functions),
 like a package manager's dev dependencies; other plans leave it out.
+
+Extras: a hand-written description with extras = false (at the top) gets
+neither the debug console nor dev functions, whatever the options say: a
+faithful clone of a real device.
 
 Reproduced: device IDs and class, strings (a contiguous run 1..N, including
 unreferenced ones), configuration attributes and power, UAC1 audio (fully,
@@ -291,6 +297,9 @@ def build_plan(model, name="device", max_speed=None, test_ids=False, console=Fal
         sys.exit(f"description model format {model.get('format')} != {MODEL_FORMAT}: "
                  "run usb-capture's capture_usb.py refresh, or update gadget_plan.py")
     p = Plan(name)
+    if model.get("extras") is False and (console or dev):
+        p.note("extras = false: no debug console or dev functions")
+        console = dev = False
     functions = [fn for fn in model["functions"] if dev or not fn.get("dev")] + ([CONSOLE] if console else [])
     for fn in model["functions"]:
         if fn.get("dev") and not dev:
@@ -399,9 +408,11 @@ def complete_stream(where, d):
 
 def complete(desc, where="description"):
     """A hand-written description -> the model a capture would have."""
-    check_keys(where, desc, {"format", "speed", "device", "strings", "config", "functions"})
+    check_keys(where, desc, {"format", "speed", "device", "strings", "config", "functions", "extras"})
     if desc.get("format", MODEL_FORMAT) != MODEL_FORMAT:
         sys.exit(f"{where}: format {desc['format']} != {MODEL_FORMAT}")
+    if not isinstance(desc.get("extras", True), bool):
+        sys.exit(f"{where}: extras is true or false")
     check_keys(f"{where} [device]", desc.get("device", {}), set(DEVICE_DEFAULTS) | set(STRING_FIELDS))
     dev = {k: desc.get("device", {}).get(k, v) for k, v in DEVICE_DEFAULTS.items()}
     if dev["idVendor"] is None or dev["idProduct"] is None:
@@ -452,11 +463,14 @@ def complete(desc, where="description"):
                 sys.exit(f"{at}: needs report_desc (hex)")
             out["report_desc"] = re.sub(r"\s", "", out["report_desc"])
         functions.append(out)
-    return {"format": MODEL_FORMAT, "device": dev, "speed": speed,
-            "strings": {"table": table, "langids": [0x0409]},
-            "config": {"bmAttributes": cfg.get("bmAttributes", 0x80), "configuration": cfg.get("configuration"),
-                       "max_power_ma": cfg.get("max_power_ma", 100)},
-            "functions": functions}
+    model = {"format": MODEL_FORMAT, "device": dev, "speed": speed,
+             "strings": {"table": table, "langids": [0x0409]},
+             "config": {"bmAttributes": cfg.get("bmAttributes", 0x80), "configuration": cfg.get("configuration"),
+                        "max_power_ma": cfg.get("max_power_ma", 100)},
+             "functions": functions}
+    if desc.get("extras") is False:
+        model["extras"] = False
+    return model
 
 
 # ---------------------------------------------------------------- files
@@ -497,13 +511,16 @@ def load_model(description, index=None):
 
 def plan_from_file(description, name="device", index=None, max_speed=None, test_ids=False, console=False,
                    dev=False):
-    p = build_plan(load_model(description, index), name, max_speed, test_ids, console, dev)
+    model = load_model(description, index)
+    p = build_plan(model, name, max_speed, test_ids, console, dev)
     options = (f"name={name} "
                f"max_speed={max_speed or 'as-described'} test_ids={'yes' if test_ids else 'no'}")
     if console:
         options += " console=yes"
     if dev:
         options += " dev=yes"
+    if model.get("extras") is False:
+        options += " extras=no"
     return render(p, description, options), p
 
 
@@ -517,6 +534,7 @@ def main():
     a.add_argument("--test-ids", action="store_true", help="use test VID:PID 1209:0001")
     a.add_argument("--console", action="store_true", help="include the debug console (acm.console)")
     a.add_argument("--dev", action="store_true", help="include the functions marked dev = true")
+    a.add_argument("--functions", metavar="FILE", help="also write the list of functions (for apps) there")
     args = a.parse_args()
     text, p = plan_from_file(args.description, args.name, args.index, args.max_speed, args.test_ids,
                              args.console, args.dev)
@@ -528,6 +546,9 @@ def main():
             print("  note:", n)
     else:
         sys.stdout.write(text)
+    if args.functions:
+        with open(args.functions, "w") as f:
+            f.write(functions_text(p))
 
 
 if __name__ == "__main__":
