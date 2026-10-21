@@ -32,7 +32,8 @@ def load(name="pi.toml"):
 
 
 def plan(cfg):
-    text, p = gadget_plan.plan_from_file(bc.rel(cfg["device"]["description"]), console=cfg["device"].get("console"))
+    names, default = bc.flavors(cfg)
+    text, p = gadget_plan.plan_from_file(bc.rel(names[default]), **bc.plan_options(cfg["device"]))
     return text, gadget_plan.functions_text(p)
 
 
@@ -147,7 +148,8 @@ class Files(unittest.TestCase):
         self.assertEqual(bc.config_txt(cfg), bc.BOOT_CONFIG)
 
     def test_shell_syntax(self):
-        for p in ("image/app.sh", "image/init", "image/settings.sh", "gadget.sh", "examples/heartbeat/app/run.sh"):
+        for p in ("image/app.sh", "image/init", "image/settings.sh", "image/slot.sh", "gadget.sh",
+                  "examples/heartbeat/app/run.sh"):
             with self.subTest(p):
                 subprocess.run(["sh", "-n", os.path.join(REPO, p)], check=True)
 

@@ -1,0 +1,20 @@
+# A faithful clone: extras = false, so no debug console or dev functions
+# whatever the image's [device] says.
+extras = false
+[device]
+idVendor = 0x1209
+idProduct = 0x0003
+[strings]
+manufacturer = "usb example"
+product = "clone"
+
+[[functions]]
+kind = "ecm"
+id = "net"
+dev = true
+
+[[functions]]
+kind = "uac1"
+id = "audio"
+name = "Clone Audio"
+[functions.host_to_device]

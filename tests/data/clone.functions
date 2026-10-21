@@ -1,0 +1,2 @@
+# functions of gadget 'device' (gadget_plan.py): ID KIND DIRECTORY
+audio uac1 /sys/kernel/config/usb_gadget/device/functions/uac1.audio

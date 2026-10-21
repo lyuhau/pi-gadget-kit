@@ -1,8 +1,9 @@
 #!/bin/sh
-# Apply a gadget plan (made by gadget_plan.py on the Mac) on the Pi. BusyBox sh.
+# Apply a gadget plan (made by gadget_plan.py) on the Pi. BusyBox sh.
 #
 #   gadget.sh up [PLAN]    create the gadget and attach it to the USB port,
 #                          unbinding whatever gadget held it (e.g. the console)
+#   gadget.sh use FLAVOR   plan that flavor and present it instead, live
 #   gadget.sh down [NAME]  detach and remove it; rebind what it displaced
 #   gadget.sh list         gadgets and the port they're bound to
 #   gadget.sh remove NAME  remove a gadget without rebinding anything
@@ -10,14 +11,32 @@
 #                          change attributes of the device that's up, e.g.
 #                          "set audio c_srate=96000 p_srate=96000" (see below)
 #   gadget.sh plan [PLAN]  print the plan as "up" applies it: with the card's settings
-# Defaults: the card's plan (/etc/usb-gadget/device.plan) and its gadget, "device".
+# Defaults: the device's plan (below) and its gadget, "device".
 # A plan with a "console" operation ([device] console) gets the debug
 # console's shell on that function's serial port.
 #
+# Flavors (README: Flavors), in images that have them (flavors.env) and
+# python3: "up" without a PLAN plans the flavor in use (the last "use"), or
+# else the card's setting "flavor" (default: the image's default flavor). A
+# flavor is the card's flavors/NAME.toml (or .json), or else a built-in one
+# (/etc/usb-gadget/flavors/). It's planned into /run/usb-gadget/device.plan
+# and functions (the list apps read), with [device]'s options. Whatever
+# fails (no such flavor, it doesn't plan, the kernel refuses it), the
+# default flavor comes up instead, or else the image's prebuilt plan
+# (/etc/usb-gadget/device.plan, the only one in images without flavors).
+# Why: /var/log/flavor.log. A typo never leaves the Pi without a device.
+#
+# use: plans FLAVOR first (if it doesn't plan, the device stays as it is:
+# exit 1), then replaces the device with it (the host sees an unplug and a
+# new device) and loads the kernel modules it needs. Exit 0: FLAVOR is up;
+# 3: the kernel refused it, the default flavor (or the prebuilt plan) is up
+# instead; 1: no device is up. Not kept across reboots: that's the card's
+# setting. Every use unbinds and binds the USB controller, which has wedged
+# when rebound several times in a row at high rates: callers keep a gap
+# between switches (gadget.sh doesn't).
+#
 # The card's settings (settings.txt; image/settings.sh) go on top of the plan:
-# usb.* replace the IDs and strings (written after the plan's, as "write?": a
-# value the kernel refuses leaves the plan's), and console = off leaves the
-# console function (acm.console) out.
+# console = off leaves the console function (acm.console) out.
 #
 # set: a function's attributes can only change while it's in no configuration.
 # So: unbind (the host sees an unplug), unlink every function, write the
@@ -31,13 +50,27 @@ R=${USB_TEST_ROOT:-}  # tests: a fake root
 CFS=$R/sys/kernel/config/usb_gadget
 DISPLACED=$R/run/gadget.displaced
 RUNPLAN=$R/run/gadget.plan  # the plan of the device that's up (settings applied), for "set"
-PLAN=$R/etc/usb-gadget/device.plan
-CONSOLE=$R/etc/usb-gadget/console.sh
-SETTING_CONSOLE= SETTING_USB_VENDOR_ID= SETTING_USB_PRODUCT_ID= SETTING_USB_MANUFACTURER= SETTING_USB_PRODUCT= SETTING_USB_SERIAL=
-[ -f "$R/etc/usb-gadget/settings.defaults" ] && . "$R/etc/usb-gadget/settings.defaults"
-[ -f "$R/run/usb-gadget/settings.env" ] && . "$R/run/usb-gadget/settings.env"
+ETC=$R/etc/usb-gadget
+PLAN=$ETC/device.plan       # prebuilt: the default flavor's
+CONSOLE=$ETC/console.sh
+RUN=$R/run/usb-gadget       # flavors: device.plan, functions, flavor (its name)
+CARD_FLAVORS=$R/media/mmcblk0p1/flavors
+PYTHON=$R/usr/bin/python3
+PLANNER=$R/usr/lib/usb-gadget/gadget_plan.py
+FLOG=$R/var/log/flavor.log
+SETTING_CONSOLE= SETTING_FLAVOR= FLAVOR_DEFAULT= FLAVOR_OPTIONS=
+[ -f "$ETC/settings.defaults" ] && . "$ETC/settings.defaults"
+[ -f "$RUN/settings.env" ] && . "$RUN/settings.env"
+[ -f "$ETC/flavors.env" ] && . "$ETC/flavors.env"
 
 die() { echo "gadget.sh: $*" >&2; exit 1; }
+
+# why a flavor didn't come up: to the caller and the log
+log() {
+	echo "gadget.sh: $*" >&2
+	mkdir -p "$(dirname "$FLOG")"
+	echo "$*" >> "$FLOG"
+}
 
 
 # Bring network functions' interfaces up, right after every bind, before the
@@ -56,20 +89,9 @@ net_up() {
 
 # PLAN with the card's settings applied, on stdout
 effective() {
-	S_CONSOLE=$SETTING_CONSOLE S_VID=$SETTING_USB_VENDOR_ID S_PID=$SETTING_USB_PRODUCT_ID \
-	S_MFR=$SETTING_USB_MANUFACTURER S_PRODUCT=$SETTING_USB_PRODUCT S_SERIAL=$SETTING_USB_SERIAL awk '
-	BEGIN {
-		n = split("idVendor S_VID idProduct S_PID strings/0x409/manufacturer S_MFR " \
-			"strings/0x409/product S_PRODUCT strings/0x409/serialnumber S_SERIAL", a, " ")
-		for (i = 1; i < n; i += 2) if (ENVIRON[a[i + 1]] != "") over[a[i]] = ENVIRON[a[i + 1]]
-	}
-	NR == FNR { if ($1 == "write") planned[$2] = 1; next }
+	S_CONSOLE=$SETTING_CONSOLE awk '
 	ENVIRON["S_CONSOLE"] == "off" && $2 ~ /^functions\/acm\.console(\/|$)/ { next }
-	{ print }
-	$1 == "write" && ($2 in over) { print "write? " $2 " " over[$2] }
-	$1 == "mkdir" && $2 == "strings/0x409" {
-		for (k in over) if (k ~ /^strings/ && !(k in planned)) print "write? " k " " over[k]
-	}' "$1" "$1"
+	{ print }' "$1"
 }
 
 remove() {
@@ -102,6 +124,10 @@ up() {
 	[ -n "$name" ] || die "$plan has no 'name' line"
 	modprobe libcomposite
 	mountpoint -q "$R/sys/kernel/config" || mount -t configfs none /sys/kernel/config
+	# the function modules (already loaded at boot, unless a flavor needs another)
+	for k in $(sed -n 's,^link functions/\([a-z0-9]*\)\..*,\1,p' "$plan" | sort -u); do
+		[ -d "$R/sys/module/usb_f_$k" ] || modprobe "usb_f_$k" || echo "note: couldn't load usb_f_$k"
+	done
 	remove "$name"
 	g="$CFS/$name"
 	mkdir "$g"
@@ -147,6 +173,108 @@ up() {
 		sh "$CONSOLE" start "$tty" 9>&-    # the shell must not hold the lock
 		echo "debug console on $tty"
 	fi
+}
+
+# ---- flavors
+
+# flavors in use: the image has them, and python3 to plan them
+flavors() { [ -n "$FLAVOR_DEFAULT" ] && [ -x "$PYTHON" ] && [ -f "$PLANNER" ]; }
+
+# NAME -> its description: the card's, else the built-in one
+find_flavor() {
+	for f in "$CARD_FLAVORS/$1.toml" "$CARD_FLAVORS/$1.json" "$ETC/flavors/$1.toml" "$ETC/flavors/$1.json"; do
+		[ -f "$f" ] && echo "$f" && return 0
+	done
+	return 1
+}
+
+# NAME -> $RUN/next.plan and next.functions; status 1, and why, if it can't
+plan_flavor() {
+	case "$1" in
+	[a-z0-9]*) case "$1" in *[!a-z0-9_-]*) log "flavor '$1': not a flavor's name"; return 1 ;; esac ;;
+	*) log "flavor '$1': not a flavor's name"; return 1 ;;
+	esac
+	f=$(find_flavor "$1") || { log "flavor $1: not on the card or built in"; return 1; }
+	mkdir -p "$RUN"
+	# shellcheck disable=SC2086  # options are words
+	if ! out=$("$PYTHON" "$PLANNER" "$f" -o "$RUN/next.plan" --functions "$RUN/next.functions" \
+			$FLAVOR_OPTIONS 2>&1); then
+		log "flavor $1 ($f) doesn't plan: $(printf '%s\n' "$out" | tail -n 1)"
+		return 1
+	fi
+	printf '%s\n' "$out" | sed -n "s/^  note: /flavor $1: note: /p"
+}
+
+# PLAN up, carrying on if it fails -> st (0: up)
+present() {
+	set +e
+	(set -e; up "$1")
+	st=$?
+	set -e
+}
+
+# The planned flavor NAME up; if the kernel refuses it, the default flavor,
+# then the prebuilt plan -> UP: what's up (a name, "prebuilt" or "")
+start() {
+	name=$1
+	while :; do
+		present "$RUN/next.plan"
+		if [ "$st" = 0 ]; then
+			mv "$RUN/next.plan" "$RUN/device.plan"
+			mv "$RUN/next.functions" "$RUN/functions"
+			echo "$name" > "$RUN/flavor"
+			UP=$name
+			return 0
+		fi
+		log "flavor $name: refused by the kernel"
+		[ "$name" != "$FLAVOR_DEFAULT" ] || break
+		name=$FLAVOR_DEFAULT
+		log "the default flavor instead: $name"
+		plan_flavor "$name" || break
+	done
+	prebuilt
+}
+
+prebuilt() {
+	log "the prebuilt device instead ($PLAN)"
+	mkdir -p "$RUN"
+	present "$PLAN"
+	UP=
+	if [ "$st" != 0 ]; then
+		log "that failed too: no device"
+		down "$(sed -n 's/^name //p' "$PLAN")" >/dev/null 2>&1 || true  # the debug console back, if it was up
+		return 0
+	fi
+	cp "$PLAN" "$RUN/device.plan"
+	cp "$ETC/functions" "$RUN/functions"
+	echo "$FLAVOR_DEFAULT" > "$RUN/flavor"
+	UP=prebuilt
+}
+
+# "up" without a PLAN, with flavors: the flavor in use, or the card's choice
+up_flavor() {
+	want=$(cat "$RUN/flavor" 2>/dev/null) || want=
+	[ -n "$want" ] || want=${SETTING_FLAVOR:-$FLAVOR_DEFAULT}
+	if plan_flavor "$want"; then
+		start "$want"
+	elif [ "$want" != "$FLAVOR_DEFAULT" ] && log "the default flavor instead: $FLAVOR_DEFAULT" \
+			&& plan_flavor "$FLAVOR_DEFAULT"; then
+		start "$FLAVOR_DEFAULT"
+	else
+		prebuilt
+	fi
+	[ -n "$UP" ] || exit 1
+}
+
+use() {
+	flavors || die "this image has no flavors to switch between (or no python3)"
+	plan_flavor "$1" || exit 1
+	start "$1"
+	case "$UP" in
+	"$1") echo "flavor $1 up" ;;
+	"") exit 1 ;;
+	*) echo "gadget.sh: flavor $1 refused; up instead: $UP" >&2; exit 3 ;;
+	esac
 }
 
 set_attrs() {
@@ -225,7 +353,14 @@ if [ "$1" != list ] && [ "$1" != plan ] && command -v flock >/dev/null; then
 fi
 
 case "$1" in
-up) up "${2:-$PLAN}" ;;
+up)
+	if [ -n "$2" ]; then up "$2"
+	elif flavors; then up_flavor
+	else
+		[ -z "$FLAVOR_DEFAULT" ] || log "no python3: the prebuilt device"
+		up "$PLAN"
+	fi ;;
+use) [ -n "$2" ] || die "usage: gadget.sh use FLAVOR"; use "$2" ;;
 down) down "${2:-device}" ;;
 list)
 	for g in "$CFS"/*/; do
@@ -233,7 +368,12 @@ list)
 	done ;;
 remove) [ -n "$2" ] || die "usage: gadget.sh remove NAME"; remove "$2" ;;
 set) [ -n "$2" ] || die "usage: gadget.sh set FUNCTION ATTR=VALUE..."; shift; set_attrs "$@" ;;
-plan) p=${2:-$PLAN}; [ -f "$p" ] || die "no plan $p"; effective "$p" ;;
-*) echo "usage: gadget.sh up [PLAN] | down [NAME] | list | remove NAME | set FUNCTION ATTR=VALUE... | plan [PLAN]" >&2
+plan)
+	p=${2:-$PLAN}
+	[ -n "$2" ] || ! flavors || [ ! -f "$RUN/device.plan" ] || p=$RUN/device.plan
+	[ -f "$p" ] || die "no plan $p"
+	effective "$p" ;;
+*) echo "usage: gadget.sh up [PLAN] | use FLAVOR | down [NAME] | list | remove NAME | set FUNCTION ATTR=VALUE..." \
+	"| plan [PLAN]" >&2
 	exit 2 ;;
 esac

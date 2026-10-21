@@ -1,0 +1,14 @@
+# A second flavor for the tests (test_settings.Flavors): a plain USB headset.
+[device]
+idVendor = 0x1209
+idProduct = 0x0002
+[strings]
+manufacturer = "usb example"
+product = "headset"
+
+[[functions]]
+kind = "uac2"
+id = "audio"
+[functions.host_to_device]
+[functions.device_to_host]
+channels = 1

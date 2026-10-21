@@ -27,6 +27,7 @@ CASES = [
     ("audiolink.toml", {"console": True, "dev": True}, "audiolink"),  # UAC2 + ECM (dev) + the debug console
     ("audiolink.toml", {"console": True}, "audiolink-release"),  # the same without its dev ECM
     ("kitchen.toml", {"console": True, "dev": True}, "kitchen"),  # every hand-written setting
+    ("clone.toml", {"console": True, "dev": True}, "clone"),  # extras = false: neither
 ]
 
 

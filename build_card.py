@@ -7,7 +7,7 @@ Build the Pi's SD card contents from an image config (config/pi.toml).
   build_card.py config/pi.toml --install /Volumes/ALPINE
   build_card.py config/pi.toml --refetch                # re-download cached packages
 
-Relative paths in the config (device description, Wi-Fi file, [app] files)
+Relative paths in the config (device descriptions, Wi-Fi file, [app] files)
 are relative to the config file. A config can include another one in its
 folder (include = "pi.toml"), and run an app ([app]; README: Apps).
 
@@ -16,7 +16,9 @@ Steps:
   2. the patched gadget modules (out/modules/, from alpine-module/fetch.sh or
      build.sh), checked against its kernel
   3. the [device] plan, written to out/device.plan and the card (with the
-     list of its functions, /etc/usb-gadget/functions)
+     list of its functions, /etc/usb-gadget/functions); every flavor is
+     planned as a check, and an initramfs image with python3 carries them
+     all to plan on the Pi (README: Flavors)
   4. packages Alpine doesn't bundle, downloaded into the card's apk cache via
      Docker; their files and hashes go in packages.lock next to the config
      (pi-NAME.packages.lock for a config called pi-NAME.toml)
@@ -61,7 +63,7 @@ CONFIG_KEYS = {
     "alpine": {"version", "arch", "sha256"},
     "system": {"hostname", "packages", "repositories"},
     "access": {"wifi", "ssh_public_key", "debug_console"},
-    "device": {"description", "max_speed", "test_ids", "start_at_boot", "console", "dev_functions"},
+    "device": {"description", "flavors", "default", "max_speed", "test_ids", "start_at_boot", "console", "dev_functions"},
     "app": {"name", "files", "overlay", "run", "owns", "state", "keep_logs", "config_txt", "kmods", "settings",
             "commits_trial", "trial_seconds"},
 }
@@ -70,11 +72,14 @@ OWNABLE = {"wifi", "time"}
 CARD = "/media/mmcblk0p1"  # the card's FAT partition on the Pi, in both image types
 GADGET = "/sys/kernel/config/usb_gadget/device"
 # Top-level folders of a card (both image types, and keep_logs'): not an app's name.
-CARD_NAMES = {"logs", "boot", "overlays", "apks", "cache", "kmods", "a", "b"}  # a/, b/: image slots
+CARD_NAMES = {"logs", "boot", "overlays", "apks", "cache", "kmods", "a", "b", "flavors"}  # a/, b/: image slots
 # The card's settings (README: Card settings), and the SSH keys file next to
 # it: its users' files, which --install keeps.
 SETTINGS = "settings.txt"
 USER_FILES = (SETTINGS, "ssh_authorized_keys")
+# Flavors added to the card (README: Flavors): the Pi's own, which --install keeps too.
+CARD_FLAVORS = "flavors"
+FLAVOR_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
 
 # Fixed plumbing rather than config: changing these mostly breaks Wi-Fi, SSH
 # or USB device mode.
@@ -239,17 +244,62 @@ def copy_kmods(card, kmods):
             f.write(data)
 
 
+def flavors(cfg):
+    """[device] flavors (name -> description, relative to the config) and the
+    default's name. A lone description is one flavor, named after its file."""
+    dev = cfg["device"]
+    if "flavors" in dev:
+        names = dict(dev["flavors"])
+        return names, dev.get("default") or next(iter(names))
+    stem = os.path.splitext(os.path.basename(dev["description"]))[0]
+    name = re.sub(r"[^a-z0-9_-]", "-", stem.lower()).strip("-_") or "device"
+    return {name: dev["description"]}, name
+
+
+def runtime_flavors(cfg):
+    """Whether the Pi plans its flavors itself: an initramfs image with python3
+    (gadget.sh use). Otherwise only the default's plan, made here, is on the Pi."""
+    return bool(cfg.get("device")) and cfg.get("image", {}).get("type") == "initramfs" \
+        and "python3" in cfg["system"]["packages"]
+
+
+def plan_options(dev):
+    """[device]'s options, as gadget_plan.plan_from_file's arguments."""
+    return {"max_speed": dev.get("max_speed") or None, "test_ids": dev.get("test_ids", False),
+            "console": dev.get("console", False), "dev": dev.get("dev_functions", False)}
+
+
+def plan_flags(dev):
+    """The same, as gadget_plan.py's options (for gadget.sh on the Pi)."""
+    o = plan_options(dev)
+    return ([f"--max-speed {o['max_speed']}"] if o["max_speed"] else []) + \
+        [flag for key, flag in (("test_ids", "--test-ids"), ("console", "--console"), ("dev", "--dev")) if o[key]]
+
+
 def make_plan(cfg):
-    """The [device] description plus its options -> the configfs plan and
-    the list of its functions (gadget_plan.functions_text)."""
+    """Every flavor planned, as a check; the default's configfs plan and the
+    list of its functions (gadget_plan.functions_text) are the result."""
     dev = cfg.get("device")
     if not dev:
         print("no [device]: the Pi only offers the debug console")
         return None
-    text, p = gadget_plan.plan_from_file(rel(dev["description"]), max_speed=dev.get("max_speed") or None,
-                                         test_ids=dev.get("test_ids", False), console=dev.get("console", False),
-                                         dev=dev.get("dev_functions", False))
-    text = text.replace(f"from {rel(dev['description'])}", f"from {dev['description']}")
+    names, default = flavors(cfg)
+    for name, src in names.items():
+        try:
+            text, p = gadget_plan.plan_from_file(rel(src), **plan_options(dev))
+        except SystemExit as e:
+            sys.exit(f"[device] flavor {name} ({src}) doesn't plan: {e.code}")
+        except Exception as e:  # unreadable TOML or JSON
+            sys.exit(f"[device] flavor {name} ({src}) doesn't plan: {e}")
+        if name == default:
+            result = text.replace(f"from {rel(src)}", f"from {src}"), p
+        elif len(names) > 1:
+            print(f"flavor {name}: {len(p.ops)} operations")
+            for n in p.notes:
+                print(f"  note: {n}")
+    text, p = result
+    if len(names) > 1:
+        print(f"default flavor: {default}")
     path = os.path.join(OUT, f"device{VARIANT}.plan")
     old = open(path).read() if os.path.exists(path) else None
     with open(path, "w") as f:
@@ -337,8 +387,10 @@ def app_env(cfg):
     if app.get("keep_logs"):
         env.append(("APP_LOGS", f"{CARD}/logs"))
     if cfg.get("device"):
+        # with flavors, the functions of the one that's up (gadget.sh up/use)
         env += [("GADGET", GADGET), ("GADGET_SH", "/etc/usb-gadget/gadget.sh"),
-                ("GADGET_FUNCTIONS", "/etc/usb-gadget/functions")]
+                ("GADGET_FUNCTIONS", "/run/usb-gadget/functions" if runtime_flavors(cfg)
+                 else "/etc/usb-gadget/functions")]
     env += [("STATE_ON_CARD", "1" if app.get("state") else ""), ("KEEP_LOGS", "1" if app.get("keep_logs") else ""),
             ("APP_KMODS", " ".join(app.get("kmods", []))),
             # image slots (image/slot.sh): who commits a trial boot, and how long it has
@@ -360,7 +412,7 @@ def has_sshd(cfg):
 def settings(cfg, plan):
     """The card's settings: blocks of (help, [(key, type, variable, default,
     shown)]), for settings.txt and the Pi's settings.keys/.defaults. `shown`
-    is the default settings.txt shows; usb.* default to "" (the plan's)."""
+    is the default settings.txt shows."""
     dev = cfg.get("device") or {}
     console = "on" if cfg["access"].get("debug_console", True) else "off"
     blocks = [
@@ -371,16 +423,11 @@ def settings(cfg, plan):
                            if dev.get("console") else "."),
          [("console", "onoff", "SETTING_CONSOLE", console, console)]),
     ]
-    if plan:
-        writes = dict(line.split(" ", 2)[1:] for line in plan[0].splitlines()
-                      if line.startswith("write ") and line.count(" ") >= 2)
-        usb = [("vendor_id", "hex16", "idVendor"), ("product_id", "hex16", "idProduct"),
-               ("manufacturer", "usbstring", f"strings/{gadget_plan.LANG}/manufacturer"),
-               ("product", "usbstring", f"strings/{gadget_plan.LANG}/product"),
-               ("serial", "usbstring", f"strings/{gadget_plan.LANG}/serialnumber")]
-        blocks.append(("The USB device as the computer sees it: vendor and product ID (hex), and the\n"
-                       "manufacturer, product and serial number (at most 126 characters each).",
-                       [(f"usb.{k}", t, f"SETTING_USB_{k.upper()}", "", writes.get(attr, "")) for k, t, attr in usb]))
+    if plan and runtime_flavors(cfg):
+        names, default = flavors(cfg)
+        blocks.append((f"The USB device the Pi presents (its flavor): built in, {', '.join(names)}; or\n"
+                       f"one added to the card as {CARD_FLAVORS}/NAME.toml.",
+                       [("flavor", "flavor", "SETTING_FLAVOR", default, default)]))
     app = cfg.get("app") or {}
     for k, v in (app.get("settings") or {}).items():
         default, text = (v, "") if isinstance(v, str) else (v.get("default", ""), v.get("help", ""))
@@ -494,6 +541,8 @@ def config_files(cfg, plan):
         files["etc/usb-gadget/functions"] = (0o644, plan[1].encode())
         if cfg["device"].get("start_at_boot", False):
             files["etc/usb-gadget/start-at-boot"] = (0o644, b"")
+        if runtime_flavors(cfg):
+            files.update(flavor_files(cfg))
     if cfg.get("app"):
         files["etc/usb-gadget/app.env"] = (0o644, app_env(cfg).encode())
         files["etc/usb-gadget/app.sh"] = (0o755, read(os.path.join(REPO, "image", "app.sh")))
@@ -501,6 +550,20 @@ def config_files(cfg, plan):
             if p in files:
                 sys.exit(f"[app] {p} is one of the platform's files; put it elsewhere")
             files[p] = f
+    return files
+
+
+def flavor_files(cfg):
+    """What the Pi plans its flavors with (gadget.sh): the built-in ones, the
+    planner, and the default's name and [device]'s options."""
+    names, default = flavors(cfg)
+    files = {f"etc/usb-gadget/flavors/{name}{'.toml' if src.endswith('.toml') else '.json'}": (0o644, read(rel(src)))
+             for name, src in names.items()}
+    files["usr/lib/usb-gadget/gadget_plan.py"] = (0o644, read(os.path.join(REPO, "gadget_plan.py")))
+    files["etc/usb-gadget/flavors.env"] = (0o644, (
+        "# flavors (build_card.py): built in at /etc/usb-gadget/flavors/, planned by gadget.sh\n"
+        f"FLAVOR_DEFAULT={default}\n"
+        f"FLAVOR_OPTIONS={shlex.quote(' '.join(plan_flags(cfg['device'])))}\n").encode())
     return files
 
 
@@ -586,7 +649,7 @@ def kept_on_card(cfg):
 
 def install(card, target, expected, keep=(), merge=None):
     """Replace the card's contents with the build, except the top-level
-    folders in `keep` (an app's state and logs) and USER_FILES, and verify
+    folders in `keep` (an app's state and logs), CARD_FLAVORS and USER_FILES, and verify
     the copy. A card's settings.txt stays as its users left it, plus what
     merge(old text) -> (text, new keys) adds (merge_settings)."""
     clash = [k for k in keep if os.path.exists(os.path.join(card, k))]
@@ -604,7 +667,8 @@ def install(card, target, expected, keep=(), merge=None):
         with open(os.path.join(target, SETTINGS), "rb") as f:
             old = f.read()
     for name in os.listdir(target):
-        if name in (".Spotlight-V100", ".fseventsd", ".Trashes") or name in keep or name in USER_FILES:
+        if name in (".Spotlight-V100", ".fseventsd", ".Trashes", CARD_FLAVORS) or name in keep \
+                or name in USER_FILES:
             continue
         p = os.path.join(target, name)
         try:
@@ -659,16 +723,37 @@ def validate(cfg, path):
          for key in keys if key not in CONFIG_KEYS[sec]]
     if unknown:
         sys.exit(f"{path}: unknown settings {', '.join(unknown)} (see image/template.toml)")
-    dev = cfg.get("device")
-    if dev is not None:
-        if "description" not in dev:
-            sys.exit(f"{path}: [device] needs description = \"<file>.json\" (or a hand-written .toml)")
-        if not os.path.exists(rel(dev["description"])):
-            sys.exit(f"{path}: [device] description {rel(dev['description'])} doesn't exist")
+    if cfg.get("device") is not None:
+        validate_device(cfg["device"], path)
     if cfg.get("app") is not None:
         validate_app(cfg, path)
     if cfg.get("image", {}).get("type", "diskless") not in ("diskless", "initramfs"):
         sys.exit(f"{path}: [image] type is \"diskless\" or \"initramfs\"")
+
+
+def validate_device(dev, path):
+    if ("description" in dev) == ("flavors" in dev):
+        sys.exit(f"{path}: [device] needs flavors = {{ NAME = \"<file>.toml\", ... }} and default = \"NAME\", "
+                 "or description = \"<file>.toml\" (or a capture's .json) for one")
+    if "description" in dev:
+        if "default" in dev:
+            sys.exit(f"{path}: [device] default goes with flavors")
+        srcs = {"description": dev["description"]}
+    else:
+        srcs = dev["flavors"]
+        if not isinstance(srcs, dict) or not srcs:
+            sys.exit(f"{path}: [device] flavors is a table: {{ NAME = \"<file>.toml\", ... }}")
+        for name in srcs:
+            if not FLAVOR_NAME.fullmatch(name):
+                sys.exit(f"{path}: [device] flavors: {name!r}: lowercase letters, digits, \"-\" and \"_\"")
+        if dev.get("default") not in srcs and not (len(srcs) == 1 and "default" not in dev):
+            sys.exit(f"{path}: [device] default is one of the flavors: {', '.join(srcs)}")
+    for name, src in srcs.items():
+        what = "description" if name == "description" else f"flavors: {name}"
+        if not isinstance(src, str) or (what != "description" and os.path.splitext(src)[1] not in (".toml", ".json")):
+            sys.exit(f"{path}: [device] {what} is a .toml (or a capture's .json)")
+        if not os.path.exists(rel(src)):
+            sys.exit(f"{path}: [device] {what}: {rel(src)} doesn't exist")
 
 
 def validate_app(cfg, path):

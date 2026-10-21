@@ -23,15 +23,13 @@ say() { echo "settings: $*"; }
 check() {
 	case "$1" in
 	hostname) printf '%s' "$2" | grep -Eqx '[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?' && printf '%s' "$2" ;;
-	hex16) printf '%s' "$2" | grep -Eqx '(0[xX])?[0-9A-Fa-f]{1,4}' && printf '0x%04x' "0x${2#0[xX]}" ;;
+	flavor) printf '%s' "$2" | grep -Eqx '[a-z0-9][a-z0-9_-]*' && printf '%s' "$2" ;;  # README: Flavors
 	onoff)
 		case "$2" in
 		on|yes|true|1) echo on ;;
 		off|no|false|0) echo off ;;
 		*) return 1 ;;
 		esac ;;
-	usbstring)  # configfs takes 126 bytes
-		[ "$(printf '%s' "$2" | wc -c)" -le 126 ] && ! printf '%s' "$2" | grep -q '[[:cntrl:]]' && printf '%s' "$2" ;;
 	text) ! printf '%s' "$2" | grep -q '[[:cntrl:]]' && printf '%s' "$2" ;;
 	*) return 1 ;;
 	esac
@@ -40,9 +38,8 @@ check() {
 hint() {
 	case "$1" in
 	hostname) echo "letters, digits and -" ;;
-	hex16) echo "a hex ID like 0x1d6b" ;;
+	flavor) echo "a flavor's name: lowercase letters, digits, - and _" ;;
 	onoff) echo "on or off" ;;
-	usbstring) echo "at most 126 characters" ;;
 	*) echo "one line of text" ;;
 	esac
 }
@@ -72,7 +69,11 @@ load() {
 			case "$value" in \"*\") value=${value#\"}; value=${value%\"} ;; esac
 			def=$(awk -v k="$key" '$1 == k { print $2, $3; exit }' "$ETC/settings.keys")
 			if [ -z "$def" ]; then
-				say "line $n: unknown key $key, ignored"
+				case "$key" in
+				usb.vendor_id|usb.product_id|usb.manufacturer|usb.product|usb.serial)
+					say "line $n: $key is no longer a setting: the flavor names the device; ignored" ;;
+				*) say "line $n: unknown key $key, ignored" ;;
+				esac
 				continue
 			fi
 			[ -n "$value" ] || continue  # empty: the built-in value
