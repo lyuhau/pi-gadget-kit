@@ -2,7 +2,7 @@
 # Copy it to config/pi.toml, put your device.json and wifi.local next to it, then:
 #   build_card.py config/pi.toml [--install /Volumes/ALPINE]
 # Users can change some settings later on the card itself, in its settings.txt
-# (README: Card settings): hostname, console, USB IDs and strings, [app] settings.
+# (README: Card settings): hostname, console, flavor, [app] settings.
 # Relative paths are relative to this file. The fixed plumbing (boot modules,
 # services, USB device mode) lives in build_card.py.
 # A second config can build on this one: include = "pi.toml" at its top, then
@@ -50,6 +50,9 @@ debug_console = true                      # USB serial root shell (no password) 
 # description: a JSON in usb-capture's format (~/Code/usb-capture): capture a
 # real device there and copy the file here; or a hand-written .toml (README:
 # Hand-written devices).
+# Or several, to switch between on the Pi (initramfs with python3; README: Flavors):
+#   flavors = { audio = "device.toml", headset = "headset.toml" }
+#   default = "audio"
 # Remove this section for a Pi that only offers the debug console.
 [device]
 description = "device.json"

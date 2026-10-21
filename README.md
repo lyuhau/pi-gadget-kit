@@ -56,6 +56,8 @@ keeps `wifi.local` out of git.
    hand (see [Hand-written devices](#hand-written-devices)). To start a
    hand-written one from a capture, run
    `.venv/bin/python capture_to_toml.py capture.json -o config/device.toml`.
+   An image can carry several, to switch between on the Pi (see
+   [Flavors](#flavors)).
 3. **Wi-Fi:** create `config/wifi.local` with `SSID=…`, `PASSWORD=…` and
    `COUNTRY=US` lines. The Zero 2 W only does 2.4 GHz. Optional: with
    `wifi = ""` the Pi leaves Wi-Fi alone (as it does SSH with
@@ -105,6 +107,10 @@ config has `[device] dev_functions = true`, like a package manager's dev
 dependencies: USB ethernet for SSH in a dev image, say, left out of the release
 image built from the same description. A build lists what it left out.
 
+**No extras:** `extras = false` at the top of a description keeps both the
+debug console and dev functions out of it, whatever `[device]` says: for a
+faithful clone of a real device, with nothing a computer wouldn't expect.
+
 | `kind` | Settings besides `id` and `dev` |
 |---|---|
 | `uac2`, `uac1` | `name` (control interface), `function_name` (uac2), `req_number`; per direction `channels` or `chmask`, `rates` (up to 10), `subslot_bytes`, `sync`, `bInterval` (high-speed `hs_bint`, 0 = auto), `mute`, `volume = {min, max, res}` (1/256 dB; any left out keep the kernel's default), `terminal_type`, terminal, unit, channel and clock names |
@@ -129,8 +135,59 @@ capture can't know: `id`s, networking, `req_number`, uac2's `function_name`.
 **Names**, for apps that change the device at runtime (see [Apps](#apps)):
 the gadget is `/sys/kernel/config/usb_gadget/device`, each function
 `functions/KIND.ID` (`uac2.audio`), or `KIND.N` without an `id`, numbered
-per kind from 0 as captures are (`hid.0`). The card lists them in
-`/etc/usb-gadget/functions`.
+per kind from 0 as captures are (`hid.0`). The Pi lists them in
+`/etc/usb-gadget/functions`, or with [flavors](#flavors), the running
+flavor's in `/run/usb-gadget/functions`.
+
+## Flavors
+
+An image can carry several devices, *flavors*, and the Pi plans the one it
+presents when it starts, or switches live. In `pi.toml`:
+
+```toml
+[device]
+flavors = { audio = "device.toml", headset = "headset.toml" }   # NAME = description
+default = "audio"
+```
+
+Paths are relative to the config. Names are lowercase letters, digits, `-`
+and `_`. A lone `description = "device.toml"` still works: one flavor, named
+after its file (`device`). Hand-written TOML or a capture's JSON both work.
+
+The build plans every flavor with `[device]`'s options (`console`,
+`dev_functions`, `max_speed`, `test_ids`) as a check: one that doesn't plan
+fails the build, with the planner's reason. The default's plan is written as
+before (`out/device.plan`, and the image's `/etc/usb-gadget/device.plan`).
+
+On the Pi this needs an `initramfs` image with `python3` in its packages;
+others (diskless, or no `python3`) only have the default's plan, made at
+build time, as before. The image carries the flavors
+(`/etc/usb-gadget/flavors/`) and the planner
+(`/usr/lib/usb-gadget/gadget_plan.py`).
+
+- **Choosing one:** the card's `settings.txt` has `flavor = NAME` (see
+  [Card settings](#card-settings)); left out, the default.
+- **Adding one:** put `NAME.toml` in a `flavors/` folder at the top of the
+  card. The card's flavors come first, so one there can also replace a
+  built-in one. `--install` keeps the folder: it's the Pi's.
+- **Coming up:** `gadget.sh up` plans the chosen flavor into
+  `/run/usb-gadget/device.plan` (and the list of its functions,
+  `/run/usb-gadget/functions`; `/run/usb-gadget/flavor` names it) and
+  presents it. If it's missing, doesn't plan, or the kernel refuses it, the
+  default comes up instead; if that fails too, the image's prebuilt plan. The
+  Pi says why in `/var/log/flavor.log`. A typo never leaves the Pi without a
+  device.
+- **Switching:** `gadget.sh use NAME` plans NAME and replaces the device with
+  it, without a reboot: the host sees an unplug and a new device. One that
+  doesn't plan is refused first, and the device stays as it is (exit 1). Exit
+  0: NAME is up; 3: the kernel refused it and the default (or the prebuilt
+  plan) is up instead; 1: nothing is up. It lasts until the next reboot;
+  `settings.txt` is what's kept. Every switch unbinds and rebinds the USB
+  controller, which has wedged when rebound several times in a row:
+  `gadget.sh` doesn't space switches out, so callers must.
+- **A flavor's identity** (IDs, strings) is its own: to rename the device,
+  edit or add a flavor. A clone of a real device can say `extras = false`
+  (see [Hand-written devices](#hand-written-devices)).
 
 ## Build and install the card
 
@@ -178,17 +235,18 @@ presenting its device. The Pi says why in `/var/log/settings.log`.
 |---|---|---|
 | `hostname` | letters, digits, `-` | `[system] hostname` |
 | `console` | `on` or `off`: the debug console | `[access] debug_console` |
-| `usb.vendor_id`, `usb.product_id` | hex, e.g. `0x1d6b` | the description's (with `[device]`) |
-| `usb.manufacturer`, `usb.product`, `usb.serial` | text, at most 126 bytes | the description's |
+| `flavor` | a [flavor](#flavors)'s name (only in images that plan them) | `[device] default` |
 | `APP.KEY` | text; the app checks it | `[app] settings` (see [Apps](#apps)) |
 
 - **console:** `on` gives the debug console when no device is up, and in
   the device when it has room for it (`[device] console`); `off` leaves it
   out of both. So an image built with `debug_console = false` can still
   turn it on: anyone who has the card can change the image anyway.
-- **usb.\***: written over the plan's values when the device comes up
-  (`gadget.sh up`; `gadget.sh plan` prints the result). A value the kernel
-  refuses leaves the plan's.
+- **flavor:** the device the Pi presents, built in or from the card's
+  `flavors/`. Not a flavor's name: the default, and the reason in
+  `/var/log/flavor.log`. The `usb.*` settings of older images are gone (a
+  flavor owns the device's IDs and strings): a card that still has them gets
+  a note in `settings.log`, and they're ignored.
 - **SSH keys:** a file `ssh_authorized_keys` next to `settings.txt`, as
   `~/.ssh/authorized_keys`, adds keys for root. Only if the image has an SSH
   server (initramfs: `[access] ssh_public_key` set; diskless: `openssh` in
@@ -203,8 +261,7 @@ On the Pi, `/etc/local.d/05-settings.start` reads the file
 (`image/settings.sh`) once the card is mounted, before the debug console and
 the device. Readers source `/etc/usb-gadget/settings.defaults` (the build's
 values), then `/run/usb-gadget/settings.env` (the card's valid ones):
-`SETTING_HOSTNAME`, `SETTING_CONSOLE`, `SETTING_USB_VENDOR_ID`...,
-`APP_SETTING_KEY`.
+`SETTING_HOSTNAME`, `SETTING_CONSOLE`, `SETTING_FLAVOR`, `APP_SETTING_KEY`.
 
 ## Image types
 
@@ -244,6 +301,7 @@ diskless reinstall the Pi has new host keys, so first run `ssh-keygen -R <addres
 
 ```bash
 ssh root@<address> sh /etc/usb-gadget/gadget.sh up      # present the device
+ssh root@<address> sh /etc/usb-gadget/gadget.sh use headset   # another flavor, live (see Flavors)
 ssh root@<address> sh /etc/usb-gadget/gadget.sh down    # remove it; the debug console comes back if enabled
 ssh root@<address> sh /etc/usb-gadget/gadget.sh list
 ssh root@<address> sh /etc/usb-gadget/gadget.sh set audio c_srate=44100   # see Apps
@@ -336,7 +394,7 @@ things are:
 | `APP_LOGS` | `$CARD/logs` (with `keep_logs`) |
 | `GADGET` | `/sys/kernel/config/usb_gadget/device` (with `[device]`) |
 | `GADGET_SH` | `/etc/usb-gadget/gadget.sh` |
-| `GADGET_FUNCTIONS` | `/etc/usb-gadget/functions`: `ID KIND DIRECTORY` per function |
+| `GADGET_FUNCTIONS` | `ID KIND DIRECTORY` per function: `/etc/usb-gadget/functions`, or with [flavors](#flavors) the running one's, `/run/usb-gadget/functions` (there once the device is up) |
 
 **Changing the device at runtime**, e.g. another audio format:
 
@@ -427,8 +485,8 @@ the build works only from the copy in `out/cache/`.
 | `build_card.py` | Builds and installs the card; owns the fixed plumbing (boot modules, services) |
 | `image_initramfs.py`, `image/init` | The initramfs image type: its build, and its PID 1 on the Pi |
 | `gadget_plan.py` | Device description → plan of configfs operations (run by `build_card.py`) |
-| `gadget.sh` | On the Pi: apply the plan (`up` / `down` / `list` / `set`) |
-| `tests/` | Golden plans for `gadget_plan.py`, `[app]` builds, card settings: `.venv/bin/python -m unittest discover tests` |
+| `gadget.sh` | On the Pi: apply the plan (`up` / `use` / `down` / `list` / `set`), planning flavors |
+| `tests/` | Golden plans for `gadget_plan.py`, `[app]` builds, flavors, card settings: `.venv/bin/python -m unittest discover tests` |
 | `alpine-module/` | Patched gadget modules (`patches/`, built in Docker for `kernel.env`'s kernel by `build.sh`, or prebuilt from a release by `fetch.sh`); `pi_kmods.sh` loads them on the Pi |
 | `pi_console.py` | Runs commands over the Pi's USB debug console |
 | `out/` | Build output: modules, `device.plan`, card contents, manifests |
