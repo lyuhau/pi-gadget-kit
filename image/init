@@ -49,7 +49,7 @@ mount -t configfs none /sys/kernel/config
 # settings.txt (/etc/local.d/05-settings.start) can change the device.
 # Read-only, for its files, unless the app keeps state or logs there. The Pi
 # never unmounts it (power just goes), so check it first; -a repairs.
-APP_OWNS= STATE_ON_CARD= KEEP_LOGS=
+APP_OWNS= STATE_ON_CARD= KEEP_LOGS= TRIAL_COMMIT= TRIAL_SECONDS=
 [ -f /etc/usb-gadget/app.env ] && . /etc/usb-gadget/app.env
 opts=ro
 [ -n "$STATE_ON_CARD$KEEP_LOGS" ] && opts=rw,noatime,flush
@@ -58,10 +58,16 @@ mkdir -p /media/mmcblk0p1
 fsck.fat -a /dev/mmcblk0p1 >/var/log/fsck.log 2>&1
 mount -t vfat -o $opts /dev/mmcblk0p1 /media/mmcblk0p1
 
+# A trial boot of an image slot (slot.sh try): back to the slot that was booting
+# unless this one is committed in time.
+[ -f /etc/usb-gadget/slot.sh ] && sh /etc/usb-gadget/slot.sh guard "${TRIAL_SECONDS:-300}" &
+
 for s in /etc/local.d/*.start; do [ -x "$s" ] && "$s"; done
 
 # The app: right after the device, before Wi-Fi.
 [ -f /etc/usb-gadget/app.sh ] && sh /etc/usb-gadget/app.sh start
+# A trial is committed here, unless the app does it once it knows it works.
+[ -f /etc/usb-gadget/slot.sh ] && [ "$TRIAL_COMMIT" != app ] && sh /etc/usb-gadget/slot.sh commit
 
 # Wi-Fi, then the clock (no RTC: it starts at 1970). In the background:
 # wlan0 appears once the driver has loaded its firmware.

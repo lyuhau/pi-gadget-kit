@@ -62,14 +62,15 @@ CONFIG_KEYS = {
     "system": {"hostname", "packages", "repositories"},
     "access": {"wifi", "ssh_public_key", "debug_console"},
     "device": {"description", "max_speed", "test_ids", "start_at_boot", "console", "dev_functions"},
-    "app": {"name", "files", "overlay", "run", "owns", "state", "keep_logs", "config_txt", "kmods", "settings"},
+    "app": {"name", "files", "overlay", "run", "owns", "state", "keep_logs", "config_txt", "kmods", "settings",
+            "commits_trial", "trial_seconds"},
 }
 # What an app can take over from the platform ([app] owns).
 OWNABLE = {"wifi", "time"}
 CARD = "/media/mmcblk0p1"  # the card's FAT partition on the Pi, in both image types
 GADGET = "/sys/kernel/config/usb_gadget/device"
 # Top-level folders of a card (both image types, and keep_logs'): not an app's name.
-CARD_NAMES = {"logs", "boot", "overlays", "apks", "cache", "kmods"}
+CARD_NAMES = {"logs", "boot", "overlays", "apks", "cache", "kmods", "a", "b"}  # a/, b/: image slots
 # The card's settings (README: Card settings), and the SSH keys file next to
 # it: its users' files, which --install keeps.
 SETTINGS = "settings.txt"
@@ -339,7 +340,10 @@ def app_env(cfg):
         env += [("GADGET", GADGET), ("GADGET_SH", "/etc/usb-gadget/gadget.sh"),
                 ("GADGET_FUNCTIONS", "/etc/usb-gadget/functions")]
     env += [("STATE_ON_CARD", "1" if app.get("state") else ""), ("KEEP_LOGS", "1" if app.get("keep_logs") else ""),
-            ("APP_KMODS", " ".join(app.get("kmods", [])))]
+            ("APP_KMODS", " ".join(app.get("kmods", []))),
+            # image slots (image/slot.sh): who commits a trial boot, and how long it has
+            ("TRIAL_COMMIT", "app" if app.get("commits_trial") else ""),
+            ("TRIAL_SECONDS", str(app.get("trial_seconds", 300)))]
     return ("# [app] of the image config (build_card.py): sourced by app.sh, which\n"
             "# exports it to [app] run, and by the initramfs image's init\n"
             + "".join(f"{k}={shlex.quote(v) if v else ''}\n" for k, v in env))
@@ -482,6 +486,8 @@ def config_files(cfg, plan):
         files["root/.ssh/authorized_keys"] = (0o600, (pubkey + "\n").encode())
     files["etc/usb-gadget/kmods.list"] = (0o644, (" ".join(KMODS) + "\n").encode())
     files["etc/usb-gadget/pi_kmods.sh"] = (0o755, read(os.path.join(REPO, "alpine-module", "pi_kmods.sh")))
+    if cfg.get("image", {}).get("type") == "initramfs":    # images in slots (image_initramfs.py)
+        files["etc/usb-gadget/slot.sh"] = (0o755, read(os.path.join(REPO, "image", "slot.sh")))
     if plan:
         files["etc/usb-gadget/gadget.sh"] = (0o755, read(os.path.join(REPO, "gadget.sh")))
         files["etc/usb-gadget/device.plan"] = (0o644, plan[0].encode())
@@ -677,9 +683,12 @@ def validate_app(cfg, path):
     for key in ("run",):
         if not isinstance(app.get(key, ""), str):
             bad(f"{key} is a string")
-    for key in ("state", "keep_logs"):
+    for key in ("state", "keep_logs", "commits_trial"):
         if not isinstance(app.get(key, False), bool):
             bad(f"{key} is true or false")
+    t = app.get("trial_seconds", 300)
+    if isinstance(t, bool) or not isinstance(t, int) or not 30 <= t <= 3600:
+        bad("trial_seconds is a number of seconds, 30-3600")
     for key in ("owns", "config_txt", "kmods"):
         v = app.get(key, [])
         if not isinstance(v, list) or not all(isinstance(x, str) and x and "\n" not in x for x in v):

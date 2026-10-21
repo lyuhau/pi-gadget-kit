@@ -354,6 +354,19 @@ change while the function is in no configuration, and
   and a packet for an interface that's down jams it, audio and control
   requests included. `set` and `up` do that (addresses are the app's).
 
+**Image slots (initramfs images):** the image lives in a slot folder (`a/`), and
+the card's `config.txt` selects it. Another image can go in another slot (`b/`) and
+be tried: `sh /etc/usb-gadget/slot.sh try b/` boots it once (the firmware's
+`tryboot`), and it stays only if it's committed (`slot.sh commit`); otherwise the
+next boot is the old slot again. The image's `/init` reboots an uncommitted trial
+after `[app] trial_seconds` (300), so an image that doesn't come up can't strand the
+Pi. `/init` commits once the app has started, unless `[app] commits_trial = true`:
+then the app commits when it knows it works (connected, say). `slot.sh status` says
+which slot runs and whether it's a trial; `slot.sh switch SLOT` changes slots
+without a trial. Trying a slot needs `python3` on the Pi (the reboot's argument).
+Tested on a Zero 2 W: a trial that panics, or whose kernel is missing, falls back
+on its own.
+
 **Dev and release:** keep two configs. The dev one includes the release one
 (same folder) and adds the ways in, section by section, key by key, so a
 release image never inherits a dev setting:
