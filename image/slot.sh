@@ -13,7 +13,9 @@
 #   slot.sh commit          a trial boot: keep the running slot (else nothing to do)
 #   slot.sh switch SLOT     boot SLOT from the next boot on, without a trial
 #   slot.sh guard [SECONDS] (/init) a trial boot: reboot unless committed in time;
-#                           any other boot: an old trial's tryboot.txt goes
+#                           any other boot: an old trial's tryboot.txt goes, and
+#                           its slot goes in /run/usb-gadget/trial-failed (a commit
+#                           removes tryboot.txt: one left means that trial wasn't kept)
 CARD=/media/mmcblk0p1
 DT=/proc/device-tree/chosen
 
@@ -97,7 +99,15 @@ switch)
     logger -t slot "switched to $2 (from the next boot)"
     echo "switched to $2 (from the next boot)" ;;
 guard)
-    trial || { drop $CARD/tryboot.txt; exit 0; }     # a trial that came back: done with it
+    if ! trial; then                    # a trial that came back: done with it
+        failed=$(sed -n 's/^os_prefix=//p' $CARD/tryboot.txt 2>/dev/null | head -n 1)
+        if [ -n "$failed" ]; then
+            mkdir -p /run/usb-gadget && echo "$failed" > /run/usb-gadget/trial-failed
+            logger -t slot "the trial of $failed wasn't kept: back on $(current)"
+        fi
+        drop $CARD/tryboot.txt
+        exit 0
+    fi
     sleep "${2:-300}"
     if [ "$(booted)" != "$(current)" ]; then
         logger -t slot "$(current) wasn't committed in ${2:-300}s: rebooting into $(booted)"
