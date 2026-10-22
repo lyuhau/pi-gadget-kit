@@ -1,9 +1,0 @@
-# heartbeat, release config: pi.toml without SSH or the debug console.
-include = "pi.toml"
-
-[access]
-ssh_public_key = ""
-debug_console = false
-
-[device]
-console = false

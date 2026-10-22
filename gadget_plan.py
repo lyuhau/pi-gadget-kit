@@ -16,8 +16,8 @@ Plans are deterministic, so they can be diffed. Plans assume the patched
 gadget modules from alpine-module/.
 
 A device description is either
-  - a capture: a JSON in usb-capture's format (capture_usb.py,
-    ~/Code/usb-capture), of which only the "model" is read (usb-capture
+  - a capture: a JSON in usb-capture's format (capture_usb.py, in the
+    usb-capture project), of which only the "model" is read (usb-capture
     README: Capture format), or
   - hand-written: a TOML (or JSON) file that is such a model, minus whatever
     has a default, plus function kinds a capture doesn't produce (ecm, ncm,

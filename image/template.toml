@@ -47,8 +47,8 @@ debug_console = true                      # USB serial root shell (no password) 
                                           # (the default of the card's settings.txt "console"; README: Card settings)
 
 # The USB device the Pi presents; it can be composite (several interfaces).
-# description: a JSON in usb-capture's format (~/Code/usb-capture): capture a
-# real device there and copy the file here; or a hand-written .toml (README:
+# description: a JSON in usb-capture's format (capture_usb.py, in the
+# usb-capture project): capture a real device there and copy the file here; or a hand-written .toml (README:
 # Hand-written devices).
 # Or several, to switch between on the Pi (initramfs with python3; README: Flavors):
 #   flavors = { audio = "device.toml", headset = "headset.toml" }
@@ -76,3 +76,5 @@ dev_functions = false  # true: also the description's functions marked dev = tru
 #kmods = []                          # stock kernel modules to ship and load before run
 #settings = {}                       # on the card's settings.txt as myapp.KEY, for run as $APP_SETTING_KEY:
                                      # { mode = "fast" } or { mode = { default = "fast", help = "fast or slow." } }
+#commits_trial = false               # true: the app commits a trial with slot.sh commit once healthy; else /init commits once the app started
+#trial_seconds = 300                 # an uncommitted trial reboots to the old slot after this (README: Image slots)

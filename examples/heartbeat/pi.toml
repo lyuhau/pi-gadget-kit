@@ -1,6 +1,6 @@
-# heartbeat, the smallest app (README: Apps), dev config:
+# heartbeat, the smallest app (README: Apps), release config:
 #   build_card.py examples/heartbeat/pi.toml [--install /Volumes/ALPINE]
-# pi-release.toml is the same without the ways in.
+# pi-dev.toml includes this one and adds the ways in.
 
 [image]
 type = "initramfs"
@@ -20,13 +20,13 @@ repositories = [
 
 [access]
 wifi = ""                                 # or "wifi.local" (SSID, PASSWORD, COUNTRY lines)
-ssh_public_key = "~/.ssh/id_ed25519.pub"
-debug_console = true
+ssh_public_key = ""
+debug_console = false
 
 [device]
 description = "device.toml"
 start_at_boot = true
-console = true         # dev: the debug console stays on USB next to the audio
+console = false
 
 [app]
 name = "heartbeat"

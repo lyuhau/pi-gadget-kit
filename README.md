@@ -52,9 +52,10 @@ keeps `wifi.local` out of git.
 
 1. **Image config:** `mkdir -p config && cp image/template.toml config/pi.toml`,
    then edit it. Each setting is commented.
-2. **Device:** put the description at `config/device.json`, or write one by
-   hand (see [Hand-written devices](#hand-written-devices)). To start a
-   hand-written one from a capture, run
+2. **Device:** capture a real device with `capture_usb.py` (the usb-capture
+   project) and put the capture at `config/device.json`, or write a
+   description by hand (see [Hand-written devices](#hand-written-devices)). To
+   start a hand-written one from a capture, run
    `.venv/bin/python capture_to_toml.py capture.json -o config/device.toml`.
    An image can carry several, to switch between on the Pi (see
    [Flavors](#flavors)).
@@ -198,9 +199,9 @@ build time, as before. The image carries the flavors
 
 1. Build: `.venv/bin/python build_card.py config/pi.toml`. Output goes to
    `out/card-<hostname>/`, and the same inputs always give the same
-   `out/card-<hostname>.manifest`. Another config, say `pi-release.toml`,
-   builds to `out/card-<hostname>-release/`, with its own
-   `pi-release.packages.lock` and `out/device-release.plan`.
+   `out/card-<hostname>.manifest`. Another config, say `pi-dev.toml`,
+   builds to `out/card-<hostname>-dev/`, with its own
+   `pi-dev.packages.lock` and `out/device-dev.plan`.
 2. Expose the card on the Mac: unplug the Pi, take the card out, plug the Pi
    in (with no card it waits in USB boot mode), insert the card, then run
    `rpiboot -d "$(brew --prefix rpiboot)/share/rpiboot/msd"`.
@@ -344,7 +345,7 @@ image's ssh host key).
 
 Another project can run on the Pi as an app: its own repo, with its own
 `config/pi.toml` (this README's settings plus `[app]`), built with this
-repo's `build_card.py`. usb knows nothing about the app; the app relies only
+repo's `build_card.py`. pi-gadget-kit knows nothing about the app; the app relies only
 on what's below. `examples/heartbeat/` is the smallest one.
 
 ```toml
@@ -359,6 +360,8 @@ keep_logs = true                    # /var/log on the card: logs/last, logs/prev
 config_txt = ["gpio=21=ip,pu"]      # extra config.txt lines
 kmods = ["snd_aloop"]               # stock modules to ship and load before run
 settings = { mode = "fast" }        # card settings: key = default, or { default, help }
+commits_trial = false               # true: the app commits a trial (slot.sh commit) once healthy; else /init does once it started
+trial_seconds = 300                 # an uncommitted trial reboots to the old slot after this
 ```
 
 - **Files:** sources are relative to the config; executable ones stay

@@ -24,7 +24,7 @@ import gadget_plan  # noqa: E402
 import image_initramfs  # noqa: E402
 
 
-def load(name="pi.toml"):
+def load(name="pi-dev.toml"):
     bc.CONFIG_DIR = EXAMPLE
     cfg = bc.load_config(os.path.join(EXAMPLE, name))
     cfg["access"]["ssh_public_key"] = ""  # no ~/.ssh needed here
@@ -50,12 +50,14 @@ def overlay_members(cfg):
 
 class Config(unittest.TestCase):
     def test_include(self):
-        dev, rel = load(), load("pi-release.toml")
+        dev, rel = load(), load("pi.toml")
         self.assertEqual(rel["app"], dev["app"])
         self.assertEqual(rel["system"], dev["system"])
         self.assertFalse(rel["access"]["debug_console"])
         self.assertFalse(rel["device"]["console"])
-        self.assertTrue(rel["device"]["start_at_boot"])  # from pi.toml
+        self.assertTrue(dev["device"]["start_at_boot"])  # from pi.toml
+        self.assertTrue(dev["access"]["debug_console"])
+        self.assertTrue(dev["device"]["console"])
         validate(dev)
         validate(rel)
 
@@ -209,7 +211,7 @@ class Install(unittest.TestCase):
 
 class Diskless(unittest.TestCase):
     def test_overlay(self):
-        cfg = load("pi-release.toml")
+        cfg = load("pi.toml")
         m = overlay_members(cfg)
         self.assertEqual(m["opt/heartbeat/run.sh"][0].mode, 0o755)
         self.assertIn(b"app.sh start", m["etc/local.d/90-app.start"][1])
