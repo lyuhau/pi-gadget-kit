@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 """
-Turn a usb-capture capture into a hand-written device description (TOML), to
-edit from there: add ids, networking, req_number, and other settings a
+Turn a usb-capture capture (capture_usb.py, in the usb-capture project) into
+a hand-written device description (TOML): a clone of the device, or a start
+to edit from, adding ids, networking, req_number, and other settings a
 capture can't know (README: Hand-written devices).
 
-  capture_to_toml.py captures/headphones.json                # writes device.toml
-  capture_to_toml.py captures/headphones.json -o config/headphones.toml --index 1
+  capture_to_toml.py captures/headphones.json      # writes PRODUCT.toml, e.g. headphones.toml
+  capture_to_toml.py captures/headphones.json -o config/flavors/local/headphones.toml --index 1
+
+The second is an audiolink flavor: then `audiolink flavor try` or `flavor add`
+it. Without -o, the file is named after the captured product (lowercase,
+other characters as "-"); a device with no product name needs -o.
+
+The TOML says extras = false: a faithful clone, without the debug console
+or dev functions an image might add (a console would add a serial interface
+and change the device class). --extras leaves that line out.
 
 Only what gadget_plan.py reproduces is written. Values equal to the
 hand-written defaults are left out; what can't be reproduced (interfaces
@@ -75,8 +84,17 @@ def stream(st):
     return items
 
 
-def to_toml(model, source):
+def slug(model):
+    """The captured product's name as a file name: "GameBuds v2" -> gamebuds-v2, or "" for none."""
+    text = model["strings"]["table"]
+    product = text.get(str(model["device"]["iProduct"])) or ""
+    return re.sub(r"[^a-z0-9]+", "-", product.lower())[:32].strip("-")
+
+
+def to_toml(model, source, extras=False):
     notes, out = [], []
+    if not extras:
+        out.append("extras = false   # a faithful clone: no debug console or dev functions")
     speed = model["speed"]
     if speed not in ("full-speed", "high-speed"):
         notes.append(f"the device is {speed}; the Pi can do full-speed or high-speed")
@@ -143,12 +161,14 @@ def plan_ops(model):
 def main():
     a = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     a.add_argument("capture", help="a usb-capture JSON")
-    a.add_argument("-o", "--output", default="device.toml", help="TOML to write (default: device.toml)")
+    a.add_argument("-o", "--output", help="TOML to write (default: the product's name, PRODUCT.toml)")
     a.add_argument("--index", type=int, help="which device in the capture (default: first non-hub)")
     a.add_argument("--force", action="store_true", help="overwrite an existing output file")
+    a.add_argument("--extras", action="store_true",
+                   help="leave out extras = false, so an image may add its debug console and dev functions")
     args = a.parse_args()
 
-    if os.path.exists(args.output) and not args.force:
+    if args.output and os.path.exists(args.output) and not args.force:
         sys.exit(f"{args.output} exists (--force to overwrite)")
     with open(args.capture) as f:
         data = json.load(f)
@@ -159,7 +179,15 @@ def main():
         sys.exit(f"{args.capture}: model format {model.get('format')} != {gp.MODEL_FORMAT}: "
                  "run usb-capture's capture_usb.py refresh")
 
-    text = to_toml(model, os.path.basename(args.capture))
+    if not args.output:
+        name = slug(model)
+        if not name:
+            sys.exit("the device has no product name: name the file with -o")
+        args.output = name + ".toml"
+        if os.path.exists(args.output) and not args.force:
+            sys.exit(f"{args.output} exists (--force to overwrite, or -o)")
+
+    text = to_toml(model, os.path.basename(args.capture), args.extras)
     with open(args.output, "w") as f:
         f.write(text)
     print(f"wrote {args.output}", flush=True)

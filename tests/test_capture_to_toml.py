@@ -46,6 +46,47 @@ class Convert(unittest.TestCase):
         self.assertEqual(desc["functions"][0]["host_to_device"]["volume"], {"min": -19712, "max": 0})
         self.assertEqual(gadget_plan.build_plan(gadget_plan.complete(desc)).ops, gadget_plan.build_plan(m).ops)
 
+    def test_extras(self):
+        m = model()
+        self.assertIs(gadget_plan.tomllib.loads(capture_to_toml.to_toml(m, "capture.json"))["extras"], False)
+        self.assertNotIn("extras", gadget_plan.tomllib.loads(capture_to_toml.to_toml(m, "capture.json", extras=True)))
+        # a clone stays exact in an image with a console: no acm.console, the capture's device class
+        desc = gadget_plan.tomllib.loads(capture_to_toml.to_toml(m, "capture.json"))
+        self.assertEqual(gadget_plan.build_plan(gadget_plan.complete(desc), console=True).ops,
+                         gadget_plan.build_plan(m).ops)
+
+    def test_slug(self):
+        m = model()
+        self.assertEqual(capture_to_toml.slug(m), "")
+        m["strings"]["table"]["2"] = "  My Head-Set (v2) "
+        self.assertEqual(capture_to_toml.slug(m), "my-head-set-v2")
+        m["strings"]["table"]["2"] = "x" * 40
+        self.assertEqual(capture_to_toml.slug(m), "x" * 32)
+
+    def test_default_name(self):
+        with open(os.path.join(DATA, "capture.json")) as f:
+            data = json.load(f)
+        with tempfile.TemporaryDirectory() as d:
+            cap = os.path.join(d, "capture.json")
+            with open(cap, "w") as f:
+                json.dump(data, f)
+            cmd = [sys.executable, os.path.join(REPO, "capture_to_toml.py"), cap]
+            p = subprocess.run(cmd, capture_output=True, text=True, cwd=d)
+            self.assertNotEqual(p.returncode, 0)
+            self.assertIn("-o", p.stderr)  # no product name
+            self.assertFalse(os.path.exists(os.path.join(d, "device.toml")))
+            gadget_plan.pick(data["devices"], None)["model"]["strings"]["table"]["2"] = "Test Phones"
+            with open(cap, "w") as f:
+                json.dump(data, f)
+            p = subprocess.run(cmd, capture_output=True, text=True, cwd=d)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            with open(os.path.join(d, "test-phones.toml"), "rb") as f:
+                self.assertIs(gadget_plan.tomllib.load(f)["extras"], False)
+            p = subprocess.run(cmd + ["--extras", "--force"], capture_output=True, text=True, cwd=d)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            with open(os.path.join(d, "test-phones.toml"), "rb") as f:
+                self.assertNotIn("extras", gadget_plan.tomllib.load(f))
+
     def test_keeps_an_existing_file(self):
         with tempfile.TemporaryDirectory() as d:
             out = os.path.join(d, "device.toml")

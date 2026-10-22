@@ -126,11 +126,16 @@ first three; to keep one the device has but doesn't point to, set it to 0 in
 The full list, and what stock UAC2 can't match, is in `gadget_plan.py`; the
 descriptions in `tests/data/` use every setting.
 
-**From a capture:** `capture_to_toml.py` writes a capture as a hand-written
-description, leaving out defaults and listing what can't be reproduced as
-comments. It checks that the TOML plans exactly like the capture, and doesn't
-overwrite an existing file without `--force`. Edit the result to add what a
-capture can't know: `id`s, networking, `req_number`, uac2's `function_name`.
+**From a capture:** `capture_to_toml.py` writes a capture (from usb-capture's
+`capture_usb.py`) as a hand-written description, leaving out defaults and
+listing what can't be reproduced as comments. It writes `extras = false`, so
+the clone is exact: with a debug console, an image would add a serial
+interface and change the device class (`--extras` doesn't write it). The output
+is `-o FILE`, or by default the captured product's name as a slug
+(`headphones.toml`). It checks that the TOML plans exactly like the capture, and
+doesn't overwrite an existing file without `--force`. Edit the result to add
+what a capture can't know: `id`s, networking, `req_number`, uac2's
+`function_name`.
 
 **Names**, for apps that change the device at runtime (see [Apps](#apps)):
 the gadget is `/sys/kernel/config/usb_gadget/device`, each function

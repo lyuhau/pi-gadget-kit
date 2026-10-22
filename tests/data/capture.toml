@@ -1,6 +1,7 @@
 # Converted from capture.json by capture_to_toml.py.
 # Not reproduced: interface 6 (class 0xff, vendor): no gadget function, left out
 
+extras = false   # a faithful clone: no debug console or dev functions
 speed = "full-speed"
 
 [device]
