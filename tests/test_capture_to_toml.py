@@ -103,5 +103,22 @@ class Convert(unittest.TestCase):
             self.assertEqual(p.returncode, 0, p.stderr)
 
 
+class OldPython(unittest.TestCase):
+    def test_without_tomllib_or_tomli(self):
+        """Apple's /usr/bin/python3 is 3.9: it says what it needs instead of a traceback."""
+        block = ("import sys, runpy\n"
+                 "class Block:\n"
+                 "    def find_spec(self, name, path=None, target=None):\n"
+                 "        if name in ('tomllib', 'tomli'):\n"
+                 "            raise ModuleNotFoundError('No module named ' + repr(name), name=name)\n"
+                 "sys.meta_path.insert(0, Block())\n"
+                 "sys.argv = ['capture_to_toml.py', '--help']\n"
+                 "runpy.run_path(%r, run_name='__main__')\n" % os.path.join(REPO, "capture_to_toml.py"))
+        p = subprocess.run([sys.executable, "-c", block], capture_output=True, text=True, cwd=REPO)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("needs Python 3.11+, or: pip install tomli", p.stderr)
+        self.assertNotIn("Traceback", p.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

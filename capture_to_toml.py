@@ -21,6 +21,9 @@ hand-written defaults are left out; what can't be reproduced (interfaces
 with no gadget function, alternate formats after the first, strings beyond
 1..N) is listed as comments at the top.
 
+It needs Python 3.11+ (tomllib), or tomli (pip install tomli): macOS's
+/usr/bin/python3 is 3.9. The project's .venv has it.
+
 The result is checked: the TOML must plan exactly like the capture. If it
 doesn't, the differences are printed and the exit status is 1 (the file is
 still written). An existing output file is never overwritten without --force.
@@ -31,7 +34,13 @@ import os
 import re
 import sys
 
-import gadget_plan as gp
+try:
+    import gadget_plan as gp
+except ImportError as e:  # gadget_plan reads TOML: tomllib (3.11+), else tomli
+    if getattr(e, "name", None) not in ("tomli", "tomllib"):
+        raise
+    sys.exit("capture_to_toml.py needs Python 3.11+, or: pip install tomli (this is Python %d.%d)"
+             % sys.version_info[:2])
 
 # Written as hex: IDs, versions, classes, bitmaps
 HEX = {"idVendor", "idProduct", "bcdDevice", "bcdUSB", "bDeviceClass", "bDeviceSubClass", "bDeviceProtocol",
