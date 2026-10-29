@@ -136,7 +136,9 @@ is `-o FILE`, or by default the captured product's name as a slug
 (`headphones.toml`). It checks that the TOML plans exactly like the capture, and
 doesn't overwrite an existing file without `--force`. Edit the result to add
 what a capture can't know: `id`s, networking, `req_number`, uac2's
-`function_name`.
+`function_name`. It needs Python 3.11+ or `tomli`
+(macOS's `/usr/bin/python3` is 3.9): run it with the project's
+`.venv/bin/python` (see above), or `pip install tomli` for the Python you use.
 
 **Names**, for apps that change the device at runtime (see [Apps](#apps)):
 the gadget is `/sys/kernel/config/usb_gadget/device`, each function
