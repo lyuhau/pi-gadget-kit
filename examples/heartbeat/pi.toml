@@ -1,6 +1,9 @@
 # heartbeat, the smallest app (README: Apps), release config:
 #   build_card.py examples/heartbeat/pi.toml [--install /Volumes/ALPINE]
 # pi-dev.toml includes this one and adds the ways in.
+# No python3 (the smallest image): slot.sh status, switch and commit work, but
+# slot.sh try can't (its reboot needs python3); add "python3" to packages to try
+# a second image in b/ (README: Image slots).
 
 [image]
 type = "initramfs"
@@ -12,7 +15,7 @@ sha256 = "60e6b9f49ec3d2c9660f2ef775f5af3a98cfd2f939c8f55b6f215d00e5ffcb87"
 
 [system]
 hostname = "heartbeat"
-packages = ["alpine-base", "openssh", "chrony"]
+packages = ["alpine-release", "ca-certificates-bundle", "openssh", "chrony"]  # os-release, CA certificates
 repositories = [
   "https://dl-cdn.alpinelinux.org/alpine/v3.24/main",
   "https://dl-cdn.alpinelinux.org/alpine/v3.24/community",

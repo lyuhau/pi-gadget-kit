@@ -274,7 +274,7 @@ values), then `/run/usb-gadget/settings.env` (the card's valid ones):
 `[image] type` in `pi.toml` picks how the Pi gets its system. Both run Alpine
 from RAM with the same kernel, packages, patched modules and config files.
 
-- **`diskless`** (default): stock Alpine. The card holds the release, an
+- **`diskless`** (a config without the key; the template picks `initramfs`): stock Alpine. The card holds the release, an
   apkovl with the config, and a package cache; every boot installs the
   packages into RAM. That install is the slow part: the debug console
   appears after about 17 s, services after about 27 s. On the Pi, `apk add`
@@ -346,7 +346,8 @@ image's ssh host key).
 Another project can run on the Pi as an app: its own repo, with its own
 `config/pi.toml` (this README's settings plus `[app]`), built with this
 repo's `build_card.py`. pi-gadget-kit knows nothing about the app; the app relies only
-on what's below. `examples/heartbeat/` is the smallest one.
+on what's below. `examples/heartbeat/` is the smallest one (no `python3`, so its
+slots can't be tried: `slot.sh try` needs it; add it to try them).
 
 ```toml
 [app]

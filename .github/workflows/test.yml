@@ -8,9 +8,15 @@ on:
 
 jobs:
   test:
+    strategy:
+      matrix:
+        # 3.9: Apple's /usr/bin/python3, which the README's venv uses (with tomli)
+        python: ["3.9", "3.12", "3.13"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
-        with: {python-version: "3.12"}
+        with: {python-version: "${{ matrix.python }}"}
+      - if: matrix.python == '3.9'
+        run: pip install tomli
       - run: python -m unittest discover tests

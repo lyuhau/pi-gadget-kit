@@ -9,10 +9,12 @@
 # only the keys that differ (README: Apps, Dev and release).
 
 [image]
-# "diskless": stock Alpine, installs its packages into RAM at every boot.
-# "initramfs": the same packages, unpacked into one initramfs when the card is
-# built; boots faster, but packages only change with a rebuild.
-type = "diskless"
+# "initramfs": the packages, unpacked into one initramfs when the card is
+# built; boots fast, needs no Docker (with alpine-module/fetch.sh's prebuilt
+# modules), and has image slots; packages only change with a rebuild.
+# "diskless": stock Alpine, installs its packages into RAM at every boot; needs
+# Docker, no slots (also what a config without this key gets).
+type = "initramfs"
 
 [alpine]
 # The alpine-rpi release, from
@@ -25,11 +27,12 @@ sha256 = "60e6b9f49ec3d2c9660f2ef775f5af3a98cfd2f939c8f55b6f215d00e5ffcb87"
 
 [system]
 hostname = "usb-gadget"
-# Diskless: installed at every boot, offline, from the release's bundled
-# packages plus a cache build_card.py fills for the rest. Initramfs: unpacked
-# at build time. Either way listed with hashes in packages.lock next to this file.
+# Initramfs: unpacked at build time. Diskless: installed at every boot, offline,
+# from the release's bundled packages plus a cache build_card.py fills for the
+# rest; add "alpine-base" (its base system, OpenRC; initramfs leaves it out).
+# Either way listed with hashes in packages.lock next to this file.
 packages = [
-  "alpine-base", "openssh", "wpa_supplicant", "ifupdown-ng", "chrony", "iw",  # Wi-Fi, SSH, time
+  "openssh", "wpa_supplicant", "ifupdown-ng", "chrony", "iw",  # Wi-Fi, SSH, time
   "alsa-utils",  # arecord/aplay, amixer
   "python3",     # for your own code on the Pi
 ]
